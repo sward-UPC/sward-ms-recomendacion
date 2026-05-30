@@ -2,6 +2,9 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sward_shared.auth import build_require_jwt, build_require_service_key
 
+from src.application.use_cases.completar_recomendacion import (
+    CompletarRecomendacionUseCase,
+)
 from src.application.use_cases.consultar_recomendacion import (
     ConsultarRecomendacionUseCase,
 )
@@ -48,3 +51,9 @@ def get_consultar_uc(
     session: AsyncSession = Depends(get_session),
 ) -> ConsultarRecomendacionUseCase:
     return ConsultarRecomendacionUseCase(RecomendacionPostgresAdapter(session))
+
+
+def get_completar_uc(
+    session: AsyncSession = Depends(get_session),
+) -> CompletarRecomendacionUseCase:
+    return CompletarRecomendacionUseCase(RecomendacionPostgresAdapter(session))
