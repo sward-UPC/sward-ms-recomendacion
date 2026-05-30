@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     environment: str = "development"
     service_name: str = "sward-ms-recomendacion"
     min_recomendaciones: int = 3
+    # Orígenes permitidos para CORS (configurables por entorno).
+    cors_allowed_origins: list[str] = ["http://localhost:5173"]
+
+    @property
+    def is_development(self) -> bool:
+        return self.environment == "development"
 
     # Autenticación JWT (token emitido por sward-ms-usuarios, HS256).
     secret_key: str = DEFAULT_SECRET_KEY
