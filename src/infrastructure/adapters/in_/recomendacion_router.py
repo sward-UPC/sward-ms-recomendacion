@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from src.application.use_cases.consultar_recomendacion import (
     ConsultarRecomendacionCommand,
@@ -25,6 +25,8 @@ router = APIRouter(prefix="/recommendations", tags=["Recomendación"])
 
 
 class GenerarRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     estudianteId: UUID
     cursoId: UUID
 

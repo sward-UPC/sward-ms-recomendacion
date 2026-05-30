@@ -1,5 +1,6 @@
 import logging
 import os
+import tempfile
 
 from src.domain.entities.prediccion_kt import PrediccionKT
 from src.domain.entities.secuencia_interaccion import SecuenciaInteraccion
@@ -25,7 +26,7 @@ class ModeloSAKT:
             from src.infrastructure.config.settings import settings
 
             s3 = boto3.client("s3", region_name=settings.aws_region)
-            local_path = f"/tmp/sakt_{self.version}.pth"
+            local_path = os.path.join(tempfile.gettempdir(), f"sakt_{self.version}.pth")
             if not os.path.exists(local_path):
                 logger.info(
                     "Descargando modelo desde S3 | key=%s", settings.sakt_model_s3_key
@@ -33,7 +34,8 @@ class ModeloSAKT:
                 s3.download_file(
                     settings.aws_s3_model_bucket, settings.sakt_model_s3_key, local_path
                 )
-            self._model = torch.load(local_path, map_location="cpu")
+            # weights_only=True evita deserialización insegura (CWE-502) al cargar pesos.
+            self._model = torch.load(local_path, map_location="cpu", weights_only=True)
             logger.info("Modelo SAKT cargado | version=%s", self.version)
         except Exception as e:
             logger.error("Error cargando SAKT, usando mock: %s", e)
