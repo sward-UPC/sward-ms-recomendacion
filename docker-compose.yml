@@ -1,0 +1,18 @@
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: sward
+      POSTGRES_PASSWORD: sward
+      POSTGRES_DB: recomendacion_db
+    ports:
+      - "5437:5432"
+  app:
+    build: .
+    ports:
+      - "8005:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://sward:sward@db:5432/recomendacion_db
+      ENVIRONMENT: development
+    depends_on:
+      - db
