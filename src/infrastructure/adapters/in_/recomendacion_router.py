@@ -3,6 +3,10 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict
 
+from src.application.use_cases.completar_recomendacion import (
+    CompletarRecomendacionCommand,
+    CompletarRecomendacionUseCase,
+)
 from src.application.use_cases.consultar_recomendacion import (
     ConsultarRecomendacionCommand,
     ConsultarRecomendacionUseCase,
@@ -11,11 +15,8 @@ from src.application.use_cases.generar_recomendacion import (
     GenerarRecomendacionCommand,
     GenerarRecomendacionUseCase,
 )
-from src.infrastructure.adapters.out_.recomendacion_postgres_adapter import (
-    RecomendacionPostgresAdapter,
-)
-from src.infrastructure.db.database import get_session
 from src.infrastructure.dependencies import (
+    get_completar_uc,
     get_consultar_uc,
     get_generar_uc,
     require_jwt,
@@ -80,8 +81,8 @@ async def listar(
 @router.patch("/{rec_id}/complete")
 async def completar(
     rec_id: UUID,
-    session=Depends(get_session),
+    uc: CompletarRecomendacionUseCase = Depends(get_completar_uc),
     _payload: dict = Depends(require_jwt),
 ):
-    await RecomendacionPostgresAdapter(session).update_estado(rec_id, "completado")
+    await uc.execute(CompletarRecomendacionCommand(recomendacion_id=rec_id))
     return {"id": str(rec_id), "estado": "completado"}
