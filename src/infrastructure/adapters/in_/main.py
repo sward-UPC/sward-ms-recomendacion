@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from scalar_fastapi import get_scalar_api_reference
 
 from src.infrastructure.adapters.in_.recomendacion_router import router
 from src.infrastructure.config.settings import settings
@@ -22,7 +23,20 @@ async def lifespan(app: FastAPI):
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
-    title="SWARD — Recomendación Adaptativa", version="0.1.0", lifespan=lifespan
+    title="SWARD — Microservicio de Recomendación Adaptativa",
+    version="0.1.0",
+    description=(
+        "Genera recomendaciones adaptativas de recursos y rutas de aprendizaje "
+        "personalizadas para cada estudiante de la plataforma SWARD."
+    ),
+    lifespan=lifespan,
+    openapi_tags=[
+        {
+            "name": "Recomendación",
+            "description": "Generación y consulta de recomendaciones adaptativas de aprendizaje.",
+        },
+        {"name": "Health", "description": "Sonda de estado del servicio."},
+    ],
 )
 app.add_middleware(
     CORSMiddleware,
@@ -58,8 +72,15 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 app.include_router(router)
 
 
-@app.get("/health")
+@app.get("/scalar", include_in_schema=False)
+async def scalar_docs():
+    """Renderiza la referencia de API interactiva (Scalar) del servicio."""
+    return get_scalar_api_reference(openapi_url=app.openapi_url, title=app.title)
+
+
+@app.get("/health", tags=["Health"], summary="Estado del servicio")
 async def health():
+    """Devuelve el estado de salud del microservicio y si usa el modelo mock."""
     return {
         "status": "ok",
         "service": settings.service_name,
