@@ -18,10 +18,14 @@ class TrazabilidadRestAdapter(TrazabilidadClientPort):
                 concepto_ids=["c1", "c2", "c1", "c3"],
                 respuestas_correctas=[True, False, True, True],
             )
+        headers = (
+            {"X-Service-Key": settings.service_key} if settings.service_key else {}
+        )
         async with httpx.AsyncClient(timeout=10.0) as client:
             r = await client.get(
                 f"{settings.trazabilidad_service_url}/students/{estudiante_id}/interactions",
                 params={"courseId": str(curso_id), "limit": 50},
+                headers=headers,
             )
             items = r.json() if r.status_code == 200 else []
         return SecuenciaInteraccion(
