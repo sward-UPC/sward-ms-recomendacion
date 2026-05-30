@@ -2,7 +2,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.application.use_cases.consultar_recomendacion import (
     ConsultarRecomendacionCommand,
@@ -12,24 +11,17 @@ from src.application.use_cases.generar_recomendacion import (
     GenerarRecomendacionCommand,
     GenerarRecomendacionUseCase,
 )
-from src.domain.services.modelo_sakt import ModeloSAKT
-from src.infrastructure.adapters.out_.cursos_rest_adapter import CursosRestAdapter
-from src.infrastructure.adapters.out_.eventbridge_adapter import EventBridgeAdapter
 from src.infrastructure.adapters.out_.recomendacion_postgres_adapter import (
     RecomendacionPostgresAdapter,
 )
-from src.infrastructure.adapters.out_.trazabilidad_rest_adapter import (
-    TrazabilidadRestAdapter,
-)
-from src.infrastructure.adapters.out_.xai_rest_adapter import XaiRestAdapter
-from src.infrastructure.config.settings import settings
 from src.infrastructure.db.database import get_session
+from src.infrastructure.dependencies import (
+    get_consultar_uc,
+    get_generar_uc,
+    require_jwt,
+)
 
 router = APIRouter(prefix="/recommendations", tags=["Recomendación"])
-
-
-def _modelo() -> ModeloSAKT:
-    return ModeloSAKT(mock=(settings.environment == "development"))
 
 
 class GenerarRequest(BaseModel):
@@ -38,15 +30,11 @@ class GenerarRequest(BaseModel):
 
 
 @router.post("/generate", status_code=201)
-async def generar(body: GenerarRequest, session: AsyncSession = Depends(get_session)):
-    uc = GenerarRecomendacionUseCase(
-        trazabilidad=TrazabilidadRestAdapter(),
-        cursos=CursosRestAdapter(),
-        xai=XaiRestAdapter(),
-        repo=RecomendacionPostgresAdapter(session),
-        event_publisher=EventBridgeAdapter(),
-        modelo=_modelo(),
-    )
+async def generar(
+    body: GenerarRequest,
+    uc: GenerarRecomendacionUseCase = Depends(get_generar_uc),
+    _payload: dict = Depends(require_jwt),
+):
     rec = await uc.execute(
         GenerarRecomendacionCommand(
             estudiante_id=body.estudianteId, curso_id=body.cursoId
@@ -70,8 +58,11 @@ async def generar(body: GenerarRequest, session: AsyncSession = Depends(get_sess
 
 
 @router.get("")
-async def listar(estudianteId: UUID, session: AsyncSession = Depends(get_session)):
-    uc = ConsultarRecomendacionUseCase(RecomendacionPostgresAdapter(session))
+async def listar(
+    estudianteId: UUID,
+    uc: ConsultarRecomendacionUseCase = Depends(get_consultar_uc),
+    _payload: dict = Depends(require_jwt),
+):
     recs = await uc.execute(ConsultarRecomendacionCommand(estudiante_id=estudianteId))
     return [
         {
@@ -85,6 +76,10 @@ async def listar(estudianteId: UUID, session: AsyncSession = Depends(get_session
 
 
 @router.patch("/{rec_id}/complete")
-async def completar(rec_id: UUID, session: AsyncSession = Depends(get_session)):
+async def completar(
+    rec_id: UUID,
+    session=Depends(get_session),
+    _payload: dict = Depends(require_jwt),
+):
     await RecomendacionPostgresAdapter(session).update_estado(rec_id, "completado")
     return {"id": str(rec_id), "estado": "completado"}

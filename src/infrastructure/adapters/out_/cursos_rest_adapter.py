@@ -50,9 +50,13 @@ class CursosRestAdapter(CursosClientPort):
     ) -> list[dict]:
         if settings.environment == "development":
             return MOCK_RESOURCES[:limit]
+        headers = (
+            {"X-Service-Key": settings.service_key} if settings.service_key else {}
+        )
         async with httpx.AsyncClient(timeout=10.0) as client:
             r = await client.get(
                 f"{settings.cursos_service_url}/resources/candidates",
                 params={"courseId": str(curso_id), "limit": limit},
+                headers=headers,
             )
             return r.json() if r.status_code == 200 else []
