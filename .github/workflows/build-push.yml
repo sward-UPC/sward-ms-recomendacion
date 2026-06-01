@@ -52,6 +52,6 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/sward-UPC/sward-ms-recomendacion:${{ steps.timestamp.outputs.ts }}
+          tags: ghcr.io/sward-upc/sward-ms-recomendacion:${{ steps.timestamp.outputs.ts }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
