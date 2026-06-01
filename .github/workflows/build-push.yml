@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-push:
-    uses: sward-UPC/.github/.github/workflow-templates/build-push-ghcr.yml@main
+    uses: sward-UPC/.github/.github/workflows/build-push-ghcr.yml@main
     with:
       image_name: sward-ms-recomendacion
       needs_shared: true
