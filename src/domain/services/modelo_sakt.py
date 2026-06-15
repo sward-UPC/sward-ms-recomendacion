@@ -39,17 +39,21 @@ class ModeloSAKT:
             s3 = boto3.client("s3", region_name=settings.aws_region)
             local_path = os.path.join(tempfile.gettempdir(), f"sakt_{self.version}.pth")
             if not os.path.exists(local_path):
-                logger.info("Descargando modelo desde S3 | key=%s", settings.sakt_model_s3_key)
-                s3.download_file(settings.aws_s3_model_bucket, settings.sakt_model_s3_key, local_path)
+                logger.info(
+                    "Descargando modelo desde S3 | key=%s", settings.sakt_model_s3_key
+                )
+                s3.download_file(
+                    settings.aws_s3_model_bucket, settings.sakt_model_s3_key, local_path
+                )
 
             # El checkpoint contiene solo tensores y primitivas Python → weights_only=True es seguro
             checkpoint = torch.load(local_path, map_location="cpu", weights_only=True)
 
             n_skills = checkpoint["n_skills"]
-            seq_len  = checkpoint["seq_len"]
+            seq_len = checkpoint["seq_len"]
             emb_size = checkpoint["emb_size"]
-            n_heads  = checkpoint["n_heads"]
-            dropout  = checkpoint["dropout"]
+            n_heads = checkpoint["n_heads"]
+            dropout = checkpoint["dropout"]
             n_layers = checkpoint["n_layers"]
             self._seq_len = seq_len
 
@@ -74,7 +78,10 @@ class ModeloSAKT:
             self._model = model
             logger.info(
                 "Modelo SAKT cargado | version=%s n_skills=%d seq_len=%d emb_size=%d",
-                self.version, n_skills, seq_len, emb_size,
+                self.version,
+                n_skills,
+                seq_len,
+                emb_size,
             )
         except Exception as e:
             logger.error("Error cargando SAKT, usando mock: %s", e)
@@ -89,7 +96,9 @@ class ModeloSAKT:
         if not secuencia.respuestas_correctas:
             prob = 0.5
         else:
-            prob = sum(secuencia.respuestas_correctas) / len(secuencia.respuestas_correctas)
+            prob = sum(secuencia.respuestas_correctas) / len(
+                secuencia.respuestas_correctas
+            )
         n = len(secuencia.concepto_ids)
         pesos = [1.0 / n if n > 0 else 0.0] * n
         return PrediccionKT(
@@ -120,13 +129,13 @@ class ModeloSAKT:
             #   q   = past concepts [0..L-2]
             #   r   = past responses [0..L-2]
             #   qry = shifted concepts [1..L-1]  ← output[-1] = P(correct para concepts[-1])
-            q   = concepts[:-1]
-            r   = responses[:-1]
+            q = concepts[:-1]
+            r = responses[:-1]
             qry = concepts[1:]
 
             pad = seq_len - (L - 1)
-            q_t   = torch.LongTensor([[0] * pad + q])
-            r_t   = torch.LongTensor([[0] * pad + r])
+            q_t = torch.LongTensor([[0] * pad + q])
+            r_t = torch.LongTensor([[0] * pad + r])
             qry_t = torch.LongTensor([[0] * pad + qry])
 
             with torch.no_grad():
