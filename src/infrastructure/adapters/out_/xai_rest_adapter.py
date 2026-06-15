@@ -12,7 +12,9 @@ class XaiRestAdapter(XaiClientPort):
     ) -> dict:
         if settings.environment == "development":
             return {"status": "mock"}
-        headers = {"X-Service-Key": settings.service_key} if settings.service_key else {}
+        headers = (
+            {"X-Service-Key": settings.service_key} if settings.service_key else {}
+        )
         async with httpx.AsyncClient(timeout=5.0) as client:
             r = await client.post(
                 f"{settings.xai_service_url}/xai/explain",
