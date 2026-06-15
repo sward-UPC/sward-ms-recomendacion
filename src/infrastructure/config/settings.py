@@ -9,6 +9,13 @@ class Settings(BaseSettings):
     database_url: str = (
         "postgresql+asyncpg://sward:sward@localhost:5432/recomendacion_db"
     )
+    # Componentes inyectados por ECS task definition (CDK via Secrets Manager).
+    db_username: str = ""
+    db_password: str = ""
+    database_host: str = ""
+    database_port: str = "5432"
+    database_name: str = ""
+
     aws_region: str = "us-east-1"
     aws_s3_model_bucket: str = "sward-models"
     sakt_model_s3_key: str = "sakt/v1.0/model.pth"
@@ -25,6 +32,15 @@ class Settings(BaseSettings):
     @property
     def is_development(self) -> bool:
         return self.environment == "development"
+
+    @model_validator(mode="after")
+    def _compose_database_url(self) -> "Settings":
+        if self.database_host and self.db_username:
+            self.database_url = (
+                f"postgresql+asyncpg://{self.db_username}:{self.db_password}"
+                f"@{self.database_host}:{self.database_port}/{self.database_name}"
+            )
+        return self
 
     # Autenticación JWT (token emitido por sward-ms-usuarios, HS256).
     secret_key: str = DEFAULT_SECRET_KEY
