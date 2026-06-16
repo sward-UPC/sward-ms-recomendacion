@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="SWARD — Microservicio de Recomendación Adaptativa",
     version="0.1.0",
+    openapi_url="/recommendations/openapi.json",
     description=(
         "Genera recomendaciones adaptativas de recursos y rutas de aprendizaje "
         "personalizadas para cada estudiante de la plataforma SWARD."
