@@ -19,6 +19,9 @@ class CompletarRecomendacionUseCase:
         self._repo = repo
 
     async def execute(self, cmd: CompletarRecomendacionCommand) -> None:
+        existing = await self._repo.find_by_id(cmd.recomendacion_id)
+        if existing is None:
+            raise KeyError(f"Recomendación {cmd.recomendacion_id} no encontrada")
         await self._repo.update_estado(
             cmd.recomendacion_id, EstadoRecomendacion.COMPLETADO.value
         )
