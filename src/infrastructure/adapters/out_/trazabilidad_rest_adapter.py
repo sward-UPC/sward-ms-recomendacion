@@ -23,7 +23,7 @@ class TrazabilidadRestAdapter(TrazabilidadClientPort):
         )
         async with httpx.AsyncClient(timeout=10.0) as client:
             r = await client.get(
-                f"{settings.trazabilidad_service_url}/students/{estudiante_id}/interactions",
+                f"{settings.trazabilidad_service_url}/internal/students/{estudiante_id}/interactions",
                 params={"courseId": str(curso_id), "limit": 50},
                 headers=headers,
             )
@@ -32,5 +32,7 @@ class TrazabilidadRestAdapter(TrazabilidadClientPort):
             estudiante_id=estudiante_id,
             curso_id=curso_id,
             concepto_ids=[str(i.get("actividad_id", "")) for i in items],
-            respuestas_correctas=[i.get("tipo") == "completado" for i in items],
+            respuestas_correctas=[
+                i.get("tipo", "").upper() == "COMPLETADO" for i in items
+            ],
         )
