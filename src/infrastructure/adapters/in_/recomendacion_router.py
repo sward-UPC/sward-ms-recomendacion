@@ -7,6 +7,7 @@ from src.application.use_cases.completar_recomendacion import (
     CompletarRecomendacionCommand,
     CompletarRecomendacionUseCase,
 )
+from src.application.use_cases.consultar_atencion import ConsultarAtencionUseCase
 from src.application.use_cases.consultar_recomendacion import (
     ConsultarRecomendacionCommand,
     ConsultarRecomendacionUseCase,
@@ -16,6 +17,7 @@ from src.application.use_cases.generar_recomendacion import (
     GenerarRecomendacionUseCase,
 )
 from src.infrastructure.dependencies import (
+    get_atencion_uc,
     get_completar_uc,
     get_consultar_uc,
     get_generar_uc,
@@ -303,3 +305,52 @@ async def completar(
         )
     except KeyError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+class PuntoAtencionResponse(BaseModel):
+    """Interacción pasada con el peso de atención que SAKT le asignó."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    concepto: str = Field(..., description="Concepto/sección de la interacción")
+    acierto: bool = Field(..., description="Si la respuesta fue correcta")
+    peso: float = Field(..., ge=0.0, le=1.0, description="Peso de atención [0,1]")
+
+
+class AtencionResponse(BaseModel):
+    """Heatmap de atención del SAKT para un estudiante."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    probabilidad_dominio: float = Field(..., ge=0.0, le=1.0)
+    puntos: list[PuntoAtencionResponse]
+
+
+@router.get(
+    "/attention",
+    response_model=AtencionResponse,
+    responses={
+        200: {"description": "Heatmap de atención obtenido"},
+        401: {"description": "No autorizado - requiere autenticación JWT"},
+    },
+)
+async def atencion(
+    estudianteId: UUID = Query(..., description="UUID del estudiante"),
+    cursoId: UUID = Query(..., description="UUID del curso"),
+    uc: ConsultarAtencionUseCase = Depends(get_atencion_uc),
+    payload: dict = Depends(require_jwt),
+):
+    """Pesos de atención reales del SAKT sobre las interacciones del estudiante.
+
+    Un estudiante solo ve los suyos (UUID del JWT); docente/admin pueden indicar otro.
+    """
+    if payload.get("rol") == "estudiante":
+        estudianteId = UUID(payload["sub"])
+    res = await uc.execute(estudianteId, cursoId)
+    return AtencionResponse(
+        probabilidad_dominio=res.probabilidad_dominio,
+        puntos=[
+            PuntoAtencionResponse(concepto=p.concepto, acierto=p.acierto, peso=p.peso)
+            for p in res.puntos
+        ],
+    )
