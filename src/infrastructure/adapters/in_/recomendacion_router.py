@@ -170,7 +170,7 @@ class CompletarRecomendacionResponse(BaseModel):
 async def generar(
     body: GenerarRecomendacionRequest,
     uc: GenerarRecomendacionUseCase = Depends(get_generar_uc),
-    _payload: dict = Depends(require_jwt),
+    payload: dict = Depends(require_jwt),
 ):
     """
     Genera recomendaciones personalizadas para un estudiante en un curso.
@@ -185,10 +185,17 @@ async def generar(
 
     **Autenticación:** Bearer JWT (requerido)
     """
+    # Un estudiante solo genera sus propias recomendaciones (toma su UUID del JWT);
+    # docente/admin pueden generar para un estudiante indicado en el body.
+    estudiante_id = (
+        UUID(payload["sub"])
+        if payload.get("rol") == "estudiante"
+        else body.estudianteId
+    )
     try:
         rec = await uc.execute(
             GenerarRecomendacionCommand(
-                estudiante_id=body.estudianteId, curso_id=body.cursoId
+                estudiante_id=estudiante_id, curso_id=body.cursoId
             )
         )
         return GenerarRecomendacionResponse(
@@ -228,7 +235,7 @@ async def listar(
         description="UUID del estudiante",
     ),
     uc: ConsultarRecomendacionUseCase = Depends(get_consultar_uc),
-    _payload: dict = Depends(require_jwt),
+    payload: dict = Depends(require_jwt),
 ):
     """
     Lista todas las recomendaciones generadas para un estudiante.
@@ -241,6 +248,9 @@ async def listar(
 
     **Autenticación:** Bearer JWT (requerido)
     """
+    # El estudiante solo ve sus propias recomendaciones (UUID del JWT).
+    if payload.get("rol") == "estudiante":
+        estudianteId = UUID(payload["sub"])
     try:
         recs = await uc.execute(
             ConsultarRecomendacionCommand(estudiante_id=estudianteId)
