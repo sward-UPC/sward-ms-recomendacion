@@ -28,11 +28,12 @@ class TrazabilidadRestAdapter(TrazabilidadClientPort):
                 headers=headers,
             )
             items = r.json() if r.status_code == 200 else []
+        # Concepto = sección Moodle (concept_id); corrección real (is_correct).
+        # Se descartan interacciones sin concepto (no aportan a la secuencia KT).
+        con_concepto = [i for i in items if i.get("concept_id")]
         return SecuenciaInteraccion(
             estudiante_id=estudiante_id,
             curso_id=curso_id,
-            concepto_ids=[str(i.get("actividad_id", "")) for i in items],
-            respuestas_correctas=[
-                i.get("tipo", "").upper() == "COMPLETADO" for i in items
-            ],
+            concepto_ids=[str(i["concept_id"]) for i in con_concepto],
+            respuestas_correctas=[bool(i.get("is_correct")) for i in con_concepto],
         )

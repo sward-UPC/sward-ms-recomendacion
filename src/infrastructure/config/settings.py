@@ -18,7 +18,9 @@ class Settings(BaseSettings):
 
     aws_region: str = "us-east-1"
     aws_s3_model_bucket: str = "sward-models"
-    sakt_model_s3_key: str = "sakt/v1.0/model.pth"
+    # Modelo SAKT entrenado sobre conceptos de Moodle (secciones). El checkpoint
+    # trae n_skills + concept_index, así que el servicio se adapta solo.
+    sakt_model_s3_key: str = "sakt/moodle/model.pth"
     trazabilidad_service_url: str = "http://localhost:8003"
     cursos_service_url: str = "http://localhost:8004"
     xai_service_url: str = "http://localhost:8006"

@@ -26,6 +26,9 @@ class ModeloSAKT:
         self._mock = mock
         self._model = None
         self._seq_len = 200
+        # Mapa concepto(str)→índice entero del modelo. Vacío para modelos legacy
+        # (assist2015, cuyos conceptos ya son ints); poblado para modelos Moodle.
+        self._concept_index: dict[str, int] = {}
         if not mock:
             self._cargar_modelo()
 
@@ -56,6 +59,8 @@ class ModeloSAKT:
             dropout = checkpoint["dropout"]
             n_layers = checkpoint["n_layers"]
             self._seq_len = seq_len
+            # Índice de conceptos del modelo (si fue entrenado con conceptos Moodle).
+            self._concept_index = checkpoint.get("concept_index", {}) or {}
 
             _mock_turtle()
 
@@ -113,12 +118,27 @@ class ModeloSAKT:
         try:
             import torch
 
-            # concepto_ids son string-ints de ASSISTments skill IDs (ej. "42", "17")
-            concepts = [int(c) for c in secuencia.concepto_ids]
-            responses = [1 if r else 0 for r in secuencia.respuestas_correctas]
+            # Mapear conceptos→índices enteros que entiende el modelo:
+            #  - con concept_index (modelo Moodle): traduce la sección; omite desconocidos.
+            #  - sin índice (legacy assist2015): los conceptos ya son string-ints.
+            pares: list[tuple[int, int]] = []
+            for concepto, correcta in zip(
+                secuencia.concepto_ids, secuencia.respuestas_correctas
+            ):
+                if self._concept_index:
+                    idx = self._concept_index.get(str(concepto))
+                    if idx is None:
+                        continue
+                elif str(concepto).lstrip("-").isdigit():
+                    idx = int(concepto)
+                else:
+                    continue
+                pares.append((idx, 1 if correcta else 0))
 
-            if len(concepts) < 2:
+            if len(pares) < 2:
                 return self._mock_prediccion(secuencia)
+            concepts = [p[0] for p in pares]
+            responses = [p[1] for p in pares]
 
             seq_len = self._seq_len
             concepts = concepts[-seq_len:]
