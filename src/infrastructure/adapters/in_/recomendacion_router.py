@@ -188,7 +188,9 @@ async def generar(
     # Un estudiante solo genera sus propias recomendaciones (toma su UUID del JWT);
     # docente/admin pueden generar para un estudiante indicado en el body.
     estudiante_id = (
-        UUID(payload["sub"]) if payload.get("rol") == "estudiante" else body.estudianteId
+        UUID(payload["sub"])
+        if payload.get("rol") == "estudiante"
+        else body.estudianteId
     )
     try:
         rec = await uc.execute(
