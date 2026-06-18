@@ -65,9 +65,30 @@ class ModeloSAKT:
             _mock_turtle()
 
             import pykt.models.utils as _pykt_utils
-            from pykt.models.sakt import SAKT
+            from pykt.models.sakt import SAKT, Blocks
+            from pykt.models.utils import ut_mask
 
             _pykt_utils.device = "cpu"
+
+            # Monkey-patch del bloque de atención para CAPTURAR los pesos (el forward
+            # de pyKT los descarta). Idéntico al stock salvo que guarda _last_attn.
+            def _blocks_forward_capture(self, q=None, k=None, v=None):
+
+                q, k, v = q.permute(1, 0, 2), k.permute(1, 0, 2), v.permute(1, 0, 2)
+                causal_mask = ut_mask(seq_len=k.shape[0])
+                attn_emb, attn_w = self.attn(
+                    q, k, v, attn_mask=causal_mask, need_weights=True
+                )
+                self._last_attn = attn_w.detach()  # (batch, tgt_len, src_len)
+                attn_emb = self.attn_dropout(attn_emb)
+                attn_emb, q = attn_emb.permute(1, 0, 2), q.permute(1, 0, 2)
+                attn_emb = self.attn_layer_norm(q + attn_emb)
+                emb = self.FFN(attn_emb)
+                emb = self.FFN_dropout(emb)
+                emb = self.FFN_layer_norm(attn_emb + emb)
+                return emb
+
+            Blocks.forward = _blocks_forward_capture
 
             model = SAKT(
                 num_c=n_skills,
@@ -163,7 +184,17 @@ class ModeloSAKT:
                 out = self._model(q_t, r_t, qry_t)
                 prob = float(out[0, -1].item())
 
+            # Pesos de atención REALES: cuánto atendió el último paso a cada
+            # interacción pasada (último bloque). Fallback a uniforme si falla.
             pesos = [1.0 / (L - 1)] * (L - 1)
+            try:
+                attn = self._model.blocks[-1]._last_attn  # (1, seq_len, seq_len)
+                fila = attn[0, -1, -(L - 1) :].tolist()
+                total = sum(fila)
+                if total > 0:
+                    pesos = [round(w / total, 4) for w in fila]
+            except Exception as e:
+                logger.warning("No se pudo extraer atención real: %s", e)
             return PrediccionKT(
                 estudiante_id=secuencia.estudiante_id,
                 curso_id=secuencia.curso_id,
