@@ -5,6 +5,7 @@ from sward_shared.auth import build_require_jwt, build_require_service_key
 from src.application.use_cases.completar_recomendacion import (
     CompletarRecomendacionUseCase,
 )
+from src.application.use_cases.consultar_atencion import ConsultarAtencionUseCase
 from src.application.use_cases.consultar_recomendacion import (
     ConsultarRecomendacionUseCase,
 )
@@ -45,6 +46,12 @@ def get_generar_uc(
         event_publisher=EventBridgeAdapter(),
         modelo=modelo,
     )
+
+
+def get_atencion_uc(
+    modelo: ModeloSAKT = Depends(get_modelo),
+) -> ConsultarAtencionUseCase:
+    return ConsultarAtencionUseCase(TrazabilidadRestAdapter(), modelo)
 
 
 def get_consultar_uc(
