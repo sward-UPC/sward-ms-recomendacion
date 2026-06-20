@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     environment: str = "development"
     service_name: str = "sward-ms-recomendacion"
     min_recomendaciones: int = 3
+    max_recomendaciones: int = 6
     # Orígenes permitidos para CORS (configurables por entorno).
     cors_allowed_origins: list[str] = ["http://localhost:5173"]
 

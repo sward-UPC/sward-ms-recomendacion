@@ -65,12 +65,17 @@ class ItemRecomendadoResponse(BaseModel):
         json_schema_extra={"example": 1},
     )
     motivo: str = Field(
-        ...,
+        "",
         max_length=512,
         description="Explicación breve de por qué se recomienda este recurso",
         json_schema_extra={
             "example": "Alinea con tu dominio actual (0.87) y cubre conceptos faltantes"
         },
+    )
+    url: str = Field(
+        "",
+        description="URL del recurso recomendado",
+        json_schema_extra={"example": "https://lms.example.com/mod/page/view.php?id=1"},
     )
 
 
@@ -211,6 +216,7 @@ async def generar(
                     score=i.score,
                     orden=i.orden,
                     motivo=i.motivo,
+                    url=i.url,
                 )
                 for i in rec.items
             ],
