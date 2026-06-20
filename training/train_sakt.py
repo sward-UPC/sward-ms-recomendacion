@@ -39,7 +39,9 @@ def cargar_secuencias(path: str):
     data = json.load(open(path))
     por_est = defaultdict(list)
     for r in data:
-        por_est[r["estudiante_id"]].append((str(r.get("orden", "")), str(r["concepto"]), bool(r["correcta"])))
+        por_est[r["estudiante_id"]].append(
+            (str(r.get("orden", "")), str(r["concepto"]), bool(r["correcta"]))
+        )
     seqs = []
     for est, filas in por_est.items():
         filas.sort(key=lambda x: x[0])  # por fecha
@@ -82,7 +84,9 @@ def main():
     muestras = [t for s in seqs if (t := to_tensors(s, concept_index))]
     if len(muestras) < 2:
         raise SystemExit(f"Muestras insuficientes: {len(muestras)}.")
-    print(f"Entrenando SAKT | estudiantes={len(seqs)} conceptos={n_skills} muestras={len(muestras)}")
+    print(
+        f"Entrenando SAKT | estudiantes={len(seqs)} conceptos={n_skills} muestras={len(muestras)}"
+    )
 
     # Monkeypatch turtle (pyKT lo importa) para entornos sin display.
     import sys
@@ -144,7 +148,9 @@ def main():
         },
         OUT_FILE,
     )
-    print(f"✓ Checkpoint guardado en {OUT_FILE} (n_skills={n_skills}, seq_len={SEQ_LEN})")
+    print(
+        f"✓ Checkpoint guardado en {OUT_FILE} (n_skills={n_skills}, seq_len={SEQ_LEN})"
+    )
 
 
 if __name__ == "__main__":
