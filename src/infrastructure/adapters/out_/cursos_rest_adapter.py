@@ -46,17 +46,21 @@ MOCK_RESOURCES = [
 
 class CursosRestAdapter(CursosClientPort):
     async def obtener_recursos_candidatos(
-        self, curso_id: UUID, limit: int = 10
+        self, curso_id: UUID, limit: int = 10, seccion: str | None = None
     ) -> list[dict]:
         if settings.environment == "development":
+            # El mock ignora la sección.
             return MOCK_RESOURCES[:limit]
         headers = (
             {"X-Service-Key": settings.service_key} if settings.service_key else {}
         )
+        params: dict = {"courseId": str(curso_id), "limit": limit}
+        if seccion:
+            params["seccion"] = seccion
         async with httpx.AsyncClient(timeout=10.0) as client:
             r = await client.get(
                 f"{settings.cursos_service_url}/resources/candidates",
-                params={"courseId": str(curso_id), "limit": limit},
+                params=params,
                 headers=headers,
             )
             return r.json() if r.status_code == 200 else []
