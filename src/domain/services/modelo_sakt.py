@@ -109,8 +109,15 @@ class ModeloSAKT:
                 seq_len,
                 emb_size,
             )
+            # print() para que quede visible en CloudWatch (el logger custom no
+            # siempre se captura; uvicorn sí captura stdout).
+            print(
+                f"[SAKT] Modelo REAL cargado desde S3 | n_skills={n_skills} seq_len={seq_len}",
+                flush=True,
+            )
         except Exception as e:
             logger.error("Error cargando SAKT, usando mock: %s", e)
+            print(f"[SAKT] FALLBACK A MOCK (no se pudo cargar de S3): {e}", flush=True)
             self._mock = True
 
     def predecir_dominio(self, secuencia: SecuenciaInteraccion) -> PrediccionKT:

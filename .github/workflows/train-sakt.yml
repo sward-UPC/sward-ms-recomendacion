@@ -1,0 +1,52 @@
+name: Entrenar modelo SAKT
+
+# Auto-entrenamiento del modelo SAKT con las interacciones reales.
+# Corre solo cada semana y también a demanda. Entrena en CPU (modelo chico),
+# sube el checkpoint a S3 y fuerza el redeploy de ms-recomendacion para recargar.
+on:
+  schedule:
+    - cron: '0 6 * * 1' # lunes 06:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar dependencias
+        run: |
+          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          pip install --quiet pykt-toolkit boto3
+
+      - name: Descargar datos de entrenamiento (interacciones reales)
+        env:
+          API_URL: ${{ secrets.SWARD_API_URL }}
+          SERVICE_KEY: ${{ secrets.TRAZABILIDAD_SERVICE_KEY }}
+        run: |
+          curl -fsS "$API_URL/api/v1/dashboard/training-data" \
+            -H "X-Service-Key: $SERVICE_KEY" -o training_data.json
+          echo "Interacciones: $(python -c 'import json;print(len(json.load(open("training_data.json"))))')"
+
+      - name: Entrenar SAKT
+        run: python training/train_sakt.py
+
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Subir modelo a S3
+        run: aws s3 cp model.pth s3://sward-models/sakt/moodle/model.pth
+
+      - name: Recargar modelo en ms-recomendacion (redeploy)
+        run: |
+          aws ecs update-service --cluster sward-cluster \
+            --service recomendacion --force-new-deployment >/dev/null
+          echo "Redeploy de ms-recomendacion disparado (recarga el modelo nuevo al arrancar)."
