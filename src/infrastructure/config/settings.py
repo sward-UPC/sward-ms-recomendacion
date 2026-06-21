@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     service_name: str = "sward-ms-recomendacion"
     min_recomendaciones: int = 3
     max_recomendaciones: int = 6
+    # Cuántos conceptos débiles (secciones) cubre la recomendación SAKT. Antes solo
+    # se targeteaba 1 → muy pocos items; con varios se cubre más, como el heurístico.
+    max_conceptos_debiles: int = 3
     # Generación de material de estudio con LLM vía AWS Bedrock (usa el IAM del
     # task role, sin API key). El modelo debe estar habilitado en Bedrock.
     bedrock_model_id: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
