@@ -21,6 +21,8 @@ _MATERIAL_CACHE: dict[tuple[str, str], tuple[float, "MaterialGenerado"]] = {}
 class GenerarMaterialCommand:
     estudiante_id: UUID
     curso_id: UUID
+    # Si True, ignora el cache y genera material fresco ("Generar más").
+    refrescar: bool = False
 
 
 @dataclass
@@ -63,7 +65,11 @@ class GenerarMaterialUseCase:
         cache_key = (str(cmd.estudiante_id), str(cmd.curso_id))
         ahora = time.time()
         cacheado = _MATERIAL_CACHE.get(cache_key)
-        if cacheado is not None and ahora - cacheado[0] < settings.material_cache_ttl_s:
+        if (
+            not cmd.refrescar
+            and cacheado is not None
+            and ahora - cacheado[0] < settings.material_cache_ttl_s
+        ):
             print(f"[MATERIAL] cache HIT | {cache_key[0]}", flush=True)
             return cacheado[1]
 
