@@ -20,12 +20,17 @@ from src.application.use_cases.generar_recomendacion import (
     GenerarRecomendacionCommand,
     GenerarRecomendacionUseCase,
 )
+from src.application.use_cases.verificar_ejercicio import (
+    VerificarEjercicioCommand,
+    VerificarEjercicioUseCase,
+)
 from src.infrastructure.dependencies import (
     get_atencion_uc,
     get_completar_uc,
     get_consultar_uc,
     get_generar_uc,
     get_material_uc,
+    get_verificar_ejercicio_uc,
     require_jwt,
 )
 
@@ -314,6 +319,46 @@ async def generar_material(
         recursos=material.recursos,
         dominio=material.dominio,
     )
+
+
+class VerificarEjercicioRequest(BaseModel):
+    enunciado: str = Field(..., description="Enunciado del ejercicio")
+    solucion: str = Field(..., description="Solución de referencia del ejercicio")
+    respuesta: str = Field(..., description="Respuesta escrita por el estudiante")
+
+
+class VerificacionResponse(BaseModel):
+    aprobado: bool = Field(..., description="True si la IA da por correcta la respuesta")
+    feedback: str = Field(..., description="Comentario breve y alentador para el alumno")
+
+
+@router.post(
+    "/verify-exercise",
+    response_model=VerificacionResponse,
+    responses={
+        200: {"description": "Evaluación de la respuesta (aprobado + feedback)"},
+        401: {"description": "No autorizado - requiere autenticación JWT"},
+    },
+)
+async def verificar_ejercicio(
+    body: VerificarEjercicioRequest,
+    uc: VerificarEjercicioUseCase = Depends(get_verificar_ejercicio_uc),
+    payload: dict = Depends(require_jwt),
+):
+    """Evalúa con un LLM si la respuesta del estudiante a un ejercicio es correcta.
+
+    Permite que el alumno resuelva la práctica dentro de la plataforma: escribe su
+    respuesta y la IA la aprueba (o da una pista). Best-effort: si el LLM falla,
+    devuelve ``aprobado: false`` con un mensaje amable (status 200, nunca rompe).
+    """
+    r = await uc.execute(
+        VerificarEjercicioCommand(
+            enunciado=body.enunciado,
+            solucion=body.solucion,
+            respuesta=body.respuesta,
+        )
+    )
+    return VerificacionResponse(aprobado=r.aprobado, feedback=r.feedback)
 
 
 @router.get(
