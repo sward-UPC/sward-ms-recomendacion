@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     # Generación de material de estudio con LLM vía AWS Bedrock (usa el IAM del
     # task role, sin API key). El modelo debe estar habilitado en Bedrock.
     bedrock_model_id: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    # Clave de la YouTube Data API v3 para adjuntar un video real al material.
+    # Best-effort: si está vacía, el material se genera sin el recurso de video.
+    youtube_api_key: str = ""
     # Orígenes permitidos para CORS (configurables por entorno).
     cors_allowed_origins: list[str] = ["http://localhost:5173"]
 
