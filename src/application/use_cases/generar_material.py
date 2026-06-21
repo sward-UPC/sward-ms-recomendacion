@@ -6,6 +6,7 @@ from uuid import UUID
 from src.domain.ports.out_.cursos_client_port import CursosClientPort
 from src.domain.ports.out_.llm_client_port import LlmClientPort
 from src.domain.ports.out_.trazabilidad_client_port import TrazabilidadClientPort
+from src.domain.ports.out_.youtube_client_port import YoutubeClientPort
 
 
 @dataclass
@@ -16,20 +17,23 @@ class GenerarMaterialCommand:
 
 @dataclass
 class MaterialGenerado:
-    """Material de estudio generado (o fallback vacío) para un concepto débil."""
+    """Set de recursos educativos tipados (o fallback vacío) para un concepto débil.
+
+    ``recursos`` es una lista de dicts tipados por ``tipo``:
+    quiz, lectura, practica y (opcional) video.
+    """
 
     disponible: bool
     concepto: str | None
-    resumen: str = ""
-    puntos_clave: list[str] = field(default_factory=list)
-    preguntas: list[dict] = field(default_factory=list)
+    recursos: list[dict] = field(default_factory=list)
 
 
 class GenerarMaterialUseCase:
-    """Genera material de estudio nuevo con un LLM para reforzar el concepto débil.
+    """Genera un set de recursos educativos tipados con un LLM + un video de YouTube.
 
-    Best-effort: si no hay clave o el LLM falla, devuelve un material no disponible
-    en lugar de romper.
+    El LLM (Bedrock) produce un quiz, una mini-lección y una práctica para
+    reforzar el concepto débil; YouTube aporta un video real. Best-effort: si no
+    hay clave o el LLM falla, devuelve un material no disponible en lugar de romper.
     """
 
     def __init__(
@@ -37,10 +41,12 @@ class GenerarMaterialUseCase:
         trazabilidad: TrazabilidadClientPort,
         cursos: CursosClientPort,
         llm: LlmClientPort,
+        youtube: YoutubeClientPort,
     ):
         self._trazabilidad = trazabilidad
         self._cursos = cursos
         self._llm = llm
+        self._youtube = youtube
 
     async def execute(self, cmd: GenerarMaterialCommand) -> MaterialGenerado:
         secuencia = await self._trazabilidad.obtener_secuencia(
@@ -64,25 +70,111 @@ class GenerarMaterialUseCase:
         if parsed is None:
             return MaterialGenerado(disponible=False, concepto=concepto_debil)
 
+        recursos = self._construir_recursos(parsed)
+        video = await self._buscar_video(parsed, concepto_txt)
+        if video is not None:
+            recursos.append(video)
+
         return MaterialGenerado(
             disponible=True,
             concepto=concepto_debil,
-            resumen=str(parsed.get("resumen", "")),
-            puntos_clave=list(parsed.get("puntos_clave", []) or []),
-            preguntas=list(parsed.get("preguntas", []) or []),
+            recursos=recursos,
         )
+
+    @staticmethod
+    def _construir_recursos(parsed: dict) -> list[dict]:
+        """Arma los recursos quiz/lectura/practica desde el JSON del LLM."""
+        recursos: list[dict] = []
+
+        quiz = parsed.get("quiz") or {}
+        preguntas_quiz = []
+        for p in quiz.get("preguntas", []) or []:
+            if not isinstance(p, dict):
+                continue
+            preguntas_quiz.append(
+                {
+                    "enunciado": str(p.get("enunciado", "")),
+                    "opciones": [str(o) for o in (p.get("opciones") or [])],
+                    "correcta": int(p.get("correcta", 0) or 0),
+                    "explicacion": str(p.get("explicacion", "")),
+                }
+            )
+        if preguntas_quiz:
+            recursos.append(
+                {
+                    "tipo": "quiz",
+                    "titulo": str(quiz.get("titulo", "Quiz de refuerzo")),
+                    "preguntas": preguntas_quiz,
+                }
+            )
+
+        lectura = parsed.get("lectura") or {}
+        contenido = str(lectura.get("contenido", ""))
+        if contenido:
+            recursos.append(
+                {
+                    "tipo": "lectura",
+                    "titulo": str(lectura.get("titulo", "Mini-lección")),
+                    "contenido": contenido,
+                }
+            )
+
+        practica = parsed.get("practica") or {}
+        ejercicios = []
+        for e in practica.get("ejercicios", []) or []:
+            if not isinstance(e, dict):
+                continue
+            ejercicios.append(
+                {
+                    "enunciado": str(e.get("enunciado", "")),
+                    "solucion": str(e.get("solucion", "")),
+                }
+            )
+        if ejercicios:
+            recursos.append(
+                {
+                    "tipo": "practica",
+                    "titulo": str(practica.get("titulo", "Práctica")),
+                    "ejercicios": ejercicios,
+                }
+            )
+
+        return recursos
+
+    async def _buscar_video(self, parsed: dict, concepto_txt: str) -> dict | None:
+        """Busca un video real en YouTube con la query sugerida por el LLM."""
+        query = str(parsed.get("video_query", "") or "").strip() or concepto_txt
+        encontrado = await self._youtube.buscar_video(query)
+        if not encontrado:
+            return None
+        return {
+            "tipo": "video",
+            "titulo": str(encontrado.get("titulo", "")),
+            "video_id": str(encontrado.get("video_id", "")),
+            "url": str(encontrado.get("url", "")),
+            "query": query,
+        }
 
     @staticmethod
     def _construir_prompt(concepto: str, dominio: int, titulos: list[str]) -> str:
         titulos_txt = ", ".join(titulos) if titulos else "ninguno disponible"
         return (
-            "Eres un tutor universitario. Genera material breve para reforzar el "
-            f'concepto "{concepto}" en un estudiante cuyo dominio estimado es '
+            "Eres un tutor universitario. Genera material de refuerzo para el "
+            f'concepto "{concepto}" para un estudiante cuyo dominio estimado es '
             f"{dominio}%. Apóyate en estos recursos del curso: {titulos_txt}. "
-            "Responde SOLO con un JSON válido (sin texto extra) con esta forma: "
-            '{"resumen": "2-3 frases claras del concepto", "puntos_clave": '
-            '["3 a 5 ideas clave"], "preguntas": [{"pregunta": "...", '
-            '"respuesta": "..."}]} con 3 preguntas de práctica con su respuesta.'
+            "Responde SOLO con un JSON válido (sin texto extra) con esta forma exacta: "
+            "{"
+            '"quiz": {"titulo": "...", "preguntas": [{"enunciado": "...", '
+            '"opciones": ["a", "b", "c", "d"], "correcta": 0, "explicacion": "..."}]}, '
+            '"lectura": {"titulo": "...", "contenido": "mini-lección de ~3 párrafos"}, '
+            '"practica": {"titulo": "...", "ejercicios": [{"enunciado": "...", '
+            '"solucion": "..."}]}, '
+            '"video_query": "mejor búsqueda de YouTube para el concepto"'
+            "}. "
+            "El quiz debe tener entre 3 y 5 preguntas de opción múltiple, cada una "
+            'con exactamente 4 opciones, "correcta" como índice (0-3) de la opción '
+            "correcta y una breve explicación. La práctica debe tener entre 2 y 3 "
+            "ejercicios con su solución."
         )
 
     @staticmethod

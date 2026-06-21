@@ -22,6 +22,7 @@ from src.infrastructure.adapters.out_.trazabilidad_rest_adapter import (
     TrazabilidadRestAdapter,
 )
 from src.infrastructure.adapters.out_.xai_rest_adapter import XaiRestAdapter
+from src.infrastructure.adapters.out_.youtube_rest_adapter import YoutubeRestAdapter
 from src.infrastructure.config.settings import settings
 from src.infrastructure.db.database import get_session
 
@@ -55,6 +56,7 @@ def get_material_uc() -> GenerarMaterialUseCase:
         trazabilidad=TrazabilidadRestAdapter(),
         cursos=CursosRestAdapter(),
         llm=BedrockLlmAdapter(),
+        youtube=YoutubeRestAdapter(),
     )
 
 
