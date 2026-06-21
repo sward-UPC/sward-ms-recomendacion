@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     # El material tipado (quiz + lectura + práctica en un JSON) es grande; con pocos
     # tokens se trunca y el JSON queda inválido → material no disponible. 4096 da aire.
     bedrock_max_tokens: int = 4096
+    # TTL del cache en memoria del material generado (segundos). Evita re-llamar a
+    # Bedrock+YouTube en cada carga; el concepto débil cambia despacio. 6h por defecto.
+    material_cache_ttl_s: int = 21600
     # Clave de la YouTube Data API v3 para adjuntar un video real al material.
     # Best-effort: si está vacía, el material se genera sin el recurso de video.
     youtube_api_key: str = ""

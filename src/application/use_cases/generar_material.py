@@ -1,5 +1,6 @@
 import json
 import re
+import time
 from dataclasses import dataclass, field
 from uuid import UUID
 
@@ -7,6 +8,13 @@ from src.domain.ports.out_.cursos_client_port import CursosClientPort
 from src.domain.ports.out_.llm_client_port import LlmClientPort
 from src.domain.ports.out_.trazabilidad_client_port import TrazabilidadClientPort
 from src.domain.ports.out_.youtube_client_port import YoutubeClientPort
+from src.infrastructure.config.settings import settings
+
+# Cache en memoria del material generado (clave: estudiante+curso). Generar cuesta
+# una llamada a Bedrock + una a YouTube y tarda unos segundos; el concepto débil
+# cambia despacio, así que cacheamos el resultado con TTL para abaratar y acelerar.
+# Vive en el proceso (se pierde al redeploy, aceptable: se regenera una vez).
+_MATERIAL_CACHE: dict[tuple[str, str], tuple[float, "MaterialGenerado"]] = {}
 
 
 @dataclass
@@ -26,6 +34,8 @@ class MaterialGenerado:
     disponible: bool
     concepto: str | None
     recursos: list[dict] = field(default_factory=list)
+    # Dominio estimado por el SAKT en el concepto débil (0-100), para el XAI.
+    dominio: int | None = None
 
 
 class GenerarMaterialUseCase:
@@ -49,6 +59,14 @@ class GenerarMaterialUseCase:
         self._youtube = youtube
 
     async def execute(self, cmd: GenerarMaterialCommand) -> MaterialGenerado:
+        # Cache HIT: devuelve sin tocar Bedrock/YouTube/trazabilidad (rápido y barato).
+        cache_key = (str(cmd.estudiante_id), str(cmd.curso_id))
+        ahora = time.time()
+        cacheado = _MATERIAL_CACHE.get(cache_key)
+        if cacheado is not None and ahora - cacheado[0] < settings.material_cache_ttl_s:
+            print(f"[MATERIAL] cache HIT | {cache_key[0]}", flush=True)
+            return cacheado[1]
+
         secuencia = await self._trazabilidad.obtener_secuencia(
             cmd.estudiante_id, cmd.curso_id
         )
@@ -65,7 +83,9 @@ class GenerarMaterialUseCase:
         texto = await self._llm.generar_texto(prompt)
         if texto is None:
             print(f"[MATERIAL] LLM None | concepto={concepto_debil!r}", flush=True)
-            return MaterialGenerado(disponible=False, concepto=concepto_debil)
+            return MaterialGenerado(
+                disponible=False, concepto=concepto_debil, dominio=dominio
+            )
 
         parsed = self._extraer_json(texto)
         if parsed is None:
@@ -74,7 +94,9 @@ class GenerarMaterialUseCase:
                 f"len_texto={len(texto)}",
                 flush=True,
             )
-            return MaterialGenerado(disponible=False, concepto=concepto_debil)
+            return MaterialGenerado(
+                disponible=False, concepto=concepto_debil, dominio=dominio
+            )
 
         recursos = self._construir_recursos(parsed)
         video = await self._buscar_video(parsed, concepto_txt)
@@ -86,11 +108,15 @@ class GenerarMaterialUseCase:
             f"[MATERIAL] OK | concepto={concepto_debil!r} recursos={tipos}",
             flush=True,
         )
-        return MaterialGenerado(
+        resultado = MaterialGenerado(
             disponible=True,
             concepto=concepto_debil,
             recursos=recursos,
+            dominio=dominio,
         )
+        # Solo cacheamos generaciones exitosas (los fallbacks se reintentan luego).
+        _MATERIAL_CACHE[cache_key] = (ahora, resultado)
+        return resultado
 
     @staticmethod
     def _construir_recursos(parsed: dict) -> list[dict]:
