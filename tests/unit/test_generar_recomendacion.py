@@ -116,7 +116,7 @@ async def test_prioriza_estudio_sobre_practica(use_case):
 
 
 @pytest.mark.asyncio
-async def test_filtra_por_concepto_debil_con_fallback():
+async def test_targetea_concepto_debil_y_salta_si_vacio():
     trazabilidad = AsyncMock()
     trazabilidad.obtener_secuencia.return_value = SecuenciaInteraccion(
         estudiante_id=uuid4(),
@@ -125,7 +125,7 @@ async def test_filtra_por_concepto_debil_con_fallback():
         respuestas_correctas=[False, False, True],
     )
     cursos = AsyncMock()
-    # Primera llamada (con sección) vacía -> fallback sin sección.
+    # grafos (más débil) sin recursos -> salta al siguiente concepto débil (listas).
     cursos.obtener_recursos_candidatos.side_effect = [[], CANDIDATOS]
     xai = AsyncMock()
     repo = AsyncMock()
@@ -136,8 +136,37 @@ async def test_filtra_por_concepto_debil_con_fallback():
     rec = await uc.execute(
         GenerarRecomendacionCommand(estudiante_id=uuid4(), curso_id=uuid4())
     )
-    # El concepto más débil (grafos: 0% aciertos) se usa como sección.
+    # El concepto más débil (grafos: 0% aciertos) se consulta primero como sección.
     primera = cursos.obtener_recursos_candidatos.call_args_list[0]
     assert primera.kwargs.get("seccion") == "grafos"
+    # Como grafos vino vacío, los items provienen del siguiente débil: listas.
     assert len(rec.items) >= 1
-    assert all("grafos" in i.motivo for i in rec.items)
+    assert all("listas" in i.motivo for i in rec.items)
+
+
+@pytest.mark.asyncio
+async def test_cubre_varios_conceptos_debiles():
+    """Con varios conceptos débiles, la recomendación cubre más de uno (no solo 1)."""
+    trazabilidad = AsyncMock()
+    trazabilidad.obtener_secuencia.return_value = SecuenciaInteraccion(
+        estudiante_id=uuid4(),
+        curso_id=uuid4(),
+        concepto_ids=["grafos", "listas", "arboles"],
+        respuestas_correctas=[False, False, False],
+    )
+    cursos = AsyncMock()
+    cursos.obtener_recursos_candidatos.return_value = CANDIDATOS
+    repo = AsyncMock()
+    repo.save.side_effect = lambda r: r
+    uc = GenerarRecomendacionUseCase(
+        trazabilidad, cursos, AsyncMock(), repo, MagicMock(), ModeloSAKT(mock=True)
+    )
+    rec = await uc.execute(
+        GenerarRecomendacionCommand(estudiante_id=uuid4(), curso_id=uuid4())
+    )
+    conceptos_cubiertos = {
+        c
+        for c in ("grafos", "listas", "arboles")
+        if any(c in i.motivo for i in rec.items)
+    }
+    assert len(conceptos_cubiertos) >= 2
