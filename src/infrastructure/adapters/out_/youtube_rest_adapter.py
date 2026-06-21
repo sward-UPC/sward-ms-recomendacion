@@ -23,6 +23,11 @@ class YoutubeRestAdapter(YoutubeClientPort):
         params = {
             "part": "snippet",
             "type": "video",
+            # Solo videos embebibles (el frontend los muestra en un iframe) y
+            # con relevancia; restringe contenido para un contexto educativo.
+            "videoEmbeddable": "true",
+            "safeSearch": "strict",
+            "relevanceLanguage": "es",
             "maxResults": 1,
             "q": query,
             "key": settings.youtube_api_key,
