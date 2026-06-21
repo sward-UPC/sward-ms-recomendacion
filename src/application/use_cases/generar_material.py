@@ -173,6 +173,7 @@ class GenerarMaterialUseCase:
             ejercicios.append(
                 {
                     "enunciado": str(e.get("enunciado", "")),
+                    "pista": str(e.get("pista", "")),
                     "solucion": str(e.get("solucion", "")),
                 }
             )
@@ -216,14 +217,15 @@ class GenerarMaterialUseCase:
             '"flashcards": [{"frente": "término o pregunta corta", '
             '"reverso": "definición o respuesta breve"}]}, '
             '"practica": {"titulo": "...", "ejercicios": [{"enunciado": "...", '
-            '"solucion": "..."}]}, '
+            '"pista": "una ayuda que oriente sin dar la respuesta", "solucion": "..."}]}, '
             '"video_query": "mejor búsqueda de YouTube para el concepto"'
             "}. "
             "El quiz debe tener entre 3 y 5 preguntas de opción múltiple, cada una "
             'con exactamente 4 opciones, "correcta" como índice (0-3) de la opción '
             "correcta y una breve explicación. La lectura debe incluir entre 4 y 6 "
             "flashcards (frente/reverso) con los conceptos clave para memorizar. La "
-            "práctica debe tener entre 2 y 3 ejercicios con su solución."
+            "práctica debe tener entre 2 y 3 ejercicios, cada uno con una pista que "
+            "oriente sin revelar la respuesta y con su solución completa."
         )
 
     @staticmethod
