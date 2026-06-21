@@ -11,6 +11,7 @@ from src.application.use_cases.consultar_recomendacion import (
 )
 from src.application.use_cases.generar_material import GenerarMaterialUseCase
 from src.application.use_cases.generar_recomendacion import GenerarRecomendacionUseCase
+from src.application.use_cases.verificar_ejercicio import VerificarEjercicioUseCase
 from src.domain.services.modelo_sakt import ModeloSAKT
 from src.infrastructure.adapters.out_.bedrock_llm_adapter import BedrockLlmAdapter
 from src.infrastructure.adapters.out_.cursos_rest_adapter import CursosRestAdapter
@@ -58,6 +59,10 @@ def get_material_uc() -> GenerarMaterialUseCase:
         llm=BedrockLlmAdapter(),
         youtube=YoutubeRestAdapter(),
     )
+
+
+def get_verificar_ejercicio_uc() -> VerificarEjercicioUseCase:
+    return VerificarEjercicioUseCase(llm=BedrockLlmAdapter())
 
 
 def get_atencion_uc(
