@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     # TTL del cache en memoria del material generado (segundos). Evita re-llamar a
     # Bedrock+YouTube en cada carga; el concepto débil cambia despacio. 6h por defecto.
     material_cache_ttl_s: int = 21600
+    # TTL del cache de la recomendación SAKT (segundos). Evita re-inferir el modelo y
+    # llamar a cursos en cada recarga. 30 min por defecto.
+    recomendacion_cache_ttl_s: int = 1800
     # Clave de la YouTube Data API v3 para adjuntar un video real al material.
     # Best-effort: si está vacía, el material se genera sin el recurso de video.
     youtube_api_key: str = ""
