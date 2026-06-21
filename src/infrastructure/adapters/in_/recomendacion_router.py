@@ -273,6 +273,10 @@ class MaterialResponse(BaseModel):
         default_factory=list,
         description="Recursos educativos tipados (quiz, lectura, practica, video)",
     )
+    dominio: int | None = Field(
+        default=None,
+        description="Dominio estimado por el SAKT en el concepto (0-100), para el XAI",
+    )
 
 
 @router.post(
@@ -308,6 +312,7 @@ async def generar_material(
         disponible=material.disponible,
         concepto=material.concepto,
         recursos=material.recursos,
+        dominio=material.dominio,
     )
 
 
