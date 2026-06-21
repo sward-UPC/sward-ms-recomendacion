@@ -252,6 +252,10 @@ class GenerarMaterialRequest(BaseModel):
         description="UUID del curso",
         json_schema_extra={"example": "550e8400-e29b-41d4-a716-446655440001"},
     )
+    refrescar: bool = Field(
+        default=False,
+        description="Si True, ignora el cache y genera material fresco (Generar más)",
+    )
 
 
 class MaterialResponse(BaseModel):
@@ -311,7 +315,11 @@ async def generar_material(
         else body.estudianteId
     )
     material = await uc.execute(
-        GenerarMaterialCommand(estudiante_id=estudiante_id, curso_id=body.cursoId)
+        GenerarMaterialCommand(
+            estudiante_id=estudiante_id,
+            curso_id=body.cursoId,
+            refrescar=body.refrescar,
+        )
     )
     return MaterialResponse(
         disponible=material.disponible,
