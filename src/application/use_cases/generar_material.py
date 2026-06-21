@@ -228,7 +228,9 @@ class GenerarMaterialUseCase:
             "oriente sin revelar la respuesta y con su solución completa. Ajusta la "
             "profundidad al nivel del estudiante: si su dominio es bajo, incluye más "
             "preguntas, flashcards y ejercicios, con explicaciones más detalladas; si "
-            "es alto, material más breve y retador."
+            "es alto, material más breve y retador. En 'contenido', 'solucion', "
+            "'explicacion' y 'pista' usa formato markdown para legibilidad: **negrita** "
+            "en los términos clave y listas con '- ' cuando enumeres varios puntos."
         )
 
     @staticmethod

@@ -44,7 +44,8 @@ class VerificarEjercicioUseCase:
             f"Respuesta del estudiante: {respuesta}\n"
             'Responde SOLO con un JSON válido (sin texto extra): {"aprobado": true/false, '
             '"feedback": "comentario breve y alentador en español, máximo 2 frases; si '
-            'no aprueba, una pista de qué le falta"}.'
+            "no aprueba, una pista de qué le falta. Usa markdown (**negrita** en lo "
+            'clave) si ayuda a la claridad"}.'
         )
 
         texto = await self._llm.generar_texto(prompt)
