@@ -256,6 +256,10 @@ class GenerarMaterialRequest(BaseModel):
         default=False,
         description="Si True, ignora el cache y genera material fresco (Generar más)",
     )
+    formatoPreferido: str | None = Field(
+        default=None,
+        description="Formato en que el alumno rinde mejor; el LLM lo enfatiza",
+    )
 
 
 class MaterialResponse(BaseModel):
@@ -319,6 +323,7 @@ async def generar_material(
             estudiante_id=estudiante_id,
             curso_id=body.cursoId,
             refrescar=body.refrescar,
+            formato_preferido=body.formatoPreferido,
         )
     )
     return MaterialResponse(

@@ -23,6 +23,9 @@ class GenerarMaterialCommand:
     curso_id: UUID
     # Si True, ignora el cache y genera material fresco ("Generar más").
     refrescar: bool = False
+    # Formato en el que el alumno aprende/rinde mejor (lectura/video/quiz/práctica),
+    # según la señal de preferencia. El LLM lo enfatiza si viene.
+    formato_preferido: str | None = None
 
 
 @dataclass
@@ -84,7 +87,9 @@ class GenerarMaterialUseCase:
         titulos = [str(r.get("titulo", "")) for r in candidatos if r.get("titulo")]
 
         concepto_txt = concepto_debil or "los conceptos del curso"
-        prompt = self._construir_prompt(concepto_txt, dominio, titulos)
+        prompt = self._construir_prompt(
+            concepto_txt, dominio, titulos, cmd.formato_preferido
+        )
 
         texto = await self._llm.generar_texto(prompt)
         if texto is None:
@@ -208,13 +213,44 @@ class GenerarMaterialUseCase:
             "query": query,
         }
 
+    # Mapea el tipo de preferencia (modname Moodle / tipo SWARD) al formato del material.
+    _FORMATO_PREF = {
+        "lectura": "la lectura (mini-lección extensa y muchas flashcards)",
+        "page": "la lectura (mini-lección extensa y muchas flashcards)",
+        "book": "la lectura (mini-lección extensa y muchas flashcards)",
+        "resource": "la lectura (mini-lección extensa y muchas flashcards)",
+        "video": "el video y la lectura",
+        "url": "el video y la lectura",
+        "quiz": "el quiz (más preguntas y explicaciones detalladas)",
+        "ejercicio": "la práctica (más ejercicios con pista y solución)",
+        "practica": "la práctica (más ejercicios con pista y solución)",
+        "assign": "la práctica (más ejercicios con pista y solución)",
+        "presentacion": "la lectura (mini-lección extensa y muchas flashcards)",
+    }
+
     @staticmethod
-    def _construir_prompt(concepto: str, dominio: int, titulos: list[str]) -> str:
+    def _construir_prompt(
+        concepto: str,
+        dominio: int,
+        titulos: list[str],
+        formato_preferido: str | None = None,
+    ) -> str:
         titulos_txt = ", ".join(titulos) if titulos else "ninguno disponible"
+        pref = ""
+        if formato_preferido:
+            enfasis = GenerarMaterialUseCase._FORMATO_PREF.get(
+                str(formato_preferido).lower()
+            )
+            if enfasis:
+                pref = (
+                    f" Este estudiante aprende mejor con {enfasis}: genera ESE "
+                    "formato mucho más rico y extenso, y haz los demás formatos más "
+                    "breves (pero incluye igual los 4 campos del JSON)."
+                )
         return (
             "Eres un tutor universitario. Genera material de refuerzo para el "
             f'concepto "{concepto}" para un estudiante cuyo dominio estimado es '
-            f"{dominio}%. Apóyate en estos recursos del curso: {titulos_txt}. "
+            f"{dominio}%.{pref} Apóyate en estos recursos del curso: {titulos_txt}. "
             "Responde SOLO con un JSON válido (sin texto extra) con esta forma exacta: "
             "{"
             '"quiz": {"titulo": "...", "preguntas": [{"enunciado": "...", '
