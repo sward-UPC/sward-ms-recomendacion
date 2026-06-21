@@ -64,10 +64,16 @@ class GenerarMaterialUseCase:
 
         texto = await self._llm.generar_texto(prompt)
         if texto is None:
+            print(f"[MATERIAL] LLM None | concepto={concepto_debil!r}", flush=True)
             return MaterialGenerado(disponible=False, concepto=concepto_debil)
 
         parsed = self._extraer_json(texto)
         if parsed is None:
+            print(
+                f"[MATERIAL] JSON inválido | concepto={concepto_debil!r} "
+                f"len_texto={len(texto)}",
+                flush=True,
+            )
             return MaterialGenerado(disponible=False, concepto=concepto_debil)
 
         recursos = self._construir_recursos(parsed)
@@ -75,6 +81,11 @@ class GenerarMaterialUseCase:
         if video is not None:
             recursos.append(video)
 
+        tipos = [r.get("tipo") for r in recursos]
+        print(
+            f"[MATERIAL] OK | concepto={concepto_debil!r} recursos={tipos}",
+            flush=True,
+        )
         return MaterialGenerado(
             disponible=True,
             concepto=concepto_debil,

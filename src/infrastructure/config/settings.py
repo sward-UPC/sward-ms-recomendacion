@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # Generación de material de estudio con LLM vía AWS Bedrock (usa el IAM del
     # task role, sin API key). El modelo debe estar habilitado en Bedrock.
     bedrock_model_id: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    # El material tipado (quiz + lectura + práctica en un JSON) es grande; con pocos
+    # tokens se trunca y el JSON queda inválido → material no disponible. 4096 da aire.
+    bedrock_max_tokens: int = 4096
     # Clave de la YouTube Data API v3 para adjuntar un video real al material.
     # Best-effort: si está vacía, el material se genera sin el recurso de video.
     youtube_api_key: str = ""
