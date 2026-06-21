@@ -249,17 +249,15 @@ class GenerarMaterialRequest(BaseModel):
     )
 
 
-class PreguntaMaterialResponse(BaseModel):
-    """Pregunta de práctica con su respuesta."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    pregunta: str = Field(..., description="Enunciado de la pregunta de práctica")
-    respuesta: str = Field(..., description="Respuesta correcta de la pregunta")
-
-
 class MaterialResponse(BaseModel):
-    """Material de estudio generado (o fallback vacío si el LLM no está disponible)."""
+    """Set de recursos educativos tipados (o fallback vacío si el LLM no está activo).
+
+    ``recursos`` es una lista de objetos tipados por su campo ``tipo``:
+    - ``quiz``: ``{tipo, titulo, preguntas: [{enunciado, opciones[4], correcta, explicacion}]}``
+    - ``lectura``: ``{tipo, titulo, contenido}``
+    - ``practica``: ``{tipo, titulo, ejercicios: [{enunciado, solucion}]}``
+    - ``video``: ``{tipo, titulo, video_id, url, query}``
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -271,12 +269,9 @@ class MaterialResponse(BaseModel):
         ...,
         description="Concepto más débil reforzado (None si no hay interacciones)",
     )
-    resumen: str = Field("", description="Resumen breve del concepto")
-    puntos_clave: list[str] = Field(
-        default_factory=list, description="Ideas clave del concepto"
-    )
-    preguntas: list[PreguntaMaterialResponse] = Field(
-        default_factory=list, description="Preguntas de práctica con su respuesta"
+    recursos: list[dict] = Field(
+        default_factory=list,
+        description="Recursos educativos tipados (quiz, lectura, practica, video)",
     )
 
 
@@ -293,11 +288,13 @@ async def generar_material(
     uc: GenerarMaterialUseCase = Depends(get_material_uc),
     payload: dict = Depends(require_jwt),
 ):
-    """Genera material de estudio nuevo (LLM) para reforzar el concepto débil.
+    """Genera un set de recursos educativos tipados (LLM + video real de YouTube).
 
-    Un estudiante usa su propio JWT; docente/admin pueden indicar otro en el body.
-    Todo el LLM es best-effort: si no hay clave o la llamada falla, devuelve
-    ``disponible: false`` con campos vacíos (status 200, nunca rompe).
+    El LLM produce un quiz, una mini-lección y una práctica para reforzar el
+    concepto débil; YouTube aporta un video real. Un estudiante usa su propio JWT;
+    docente/admin pueden indicar otro en el body. Todo es best-effort: si no hay
+    clave o la llamada falla, devuelve ``disponible: false`` con ``recursos: []``
+    (status 200, nunca rompe).
     """
     estudiante_id = (
         UUID(payload["sub"])
@@ -310,16 +307,7 @@ async def generar_material(
     return MaterialResponse(
         disponible=material.disponible,
         concepto=material.concepto,
-        resumen=material.resumen,
-        puntos_clave=material.puntos_clave,
-        preguntas=[
-            PreguntaMaterialResponse(
-                pregunta=str(p.get("pregunta", "")),
-                respuesta=str(p.get("respuesta", "")),
-            )
-            for p in material.preguntas
-            if isinstance(p, dict)
-        ],
+        recursos=material.recursos,
     )
 
 
