@@ -148,11 +148,20 @@ class GenerarMaterialUseCase:
         lectura = parsed.get("lectura") or {}
         contenido = str(lectura.get("contenido", ""))
         if contenido:
+            flashcards = []
+            for fc in lectura.get("flashcards", []) or []:
+                if not isinstance(fc, dict):
+                    continue
+                frente = str(fc.get("frente", "")).strip()
+                reverso = str(fc.get("reverso", "")).strip()
+                if frente and reverso:
+                    flashcards.append({"frente": frente, "reverso": reverso})
             recursos.append(
                 {
                     "tipo": "lectura",
                     "titulo": str(lectura.get("titulo", "Mini-lección")),
                     "contenido": contenido,
+                    "flashcards": flashcards,
                 }
             )
 
@@ -203,15 +212,18 @@ class GenerarMaterialUseCase:
             "{"
             '"quiz": {"titulo": "...", "preguntas": [{"enunciado": "...", '
             '"opciones": ["a", "b", "c", "d"], "correcta": 0, "explicacion": "..."}]}, '
-            '"lectura": {"titulo": "...", "contenido": "mini-lección de ~3 párrafos"}, '
+            '"lectura": {"titulo": "...", "contenido": "mini-lección de ~3 párrafos", '
+            '"flashcards": [{"frente": "término o pregunta corta", '
+            '"reverso": "definición o respuesta breve"}]}, '
             '"practica": {"titulo": "...", "ejercicios": [{"enunciado": "...", '
             '"solucion": "..."}]}, '
             '"video_query": "mejor búsqueda de YouTube para el concepto"'
             "}. "
             "El quiz debe tener entre 3 y 5 preguntas de opción múltiple, cada una "
             'con exactamente 4 opciones, "correcta" como índice (0-3) de la opción '
-            "correcta y una breve explicación. La práctica debe tener entre 2 y 3 "
-            "ejercicios con su solución."
+            "correcta y una breve explicación. La lectura debe incluir entre 4 y 6 "
+            "flashcards (frente/reverso) con los conceptos clave para memorizar. La "
+            "práctica debe tener entre 2 y 3 ejercicios con su solución."
         )
 
     @staticmethod
