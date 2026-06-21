@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     max_recomendaciones: int = 6
     # Generación de material de estudio con LLM vía AWS Bedrock (usa el IAM del
     # task role, sin API key). El modelo debe estar habilitado en Bedrock.
-    bedrock_model_id: str = "us.anthropic.claude-3-5-haiku-20241022-v1:0"
+    bedrock_model_id: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
     # Orígenes permitidos para CORS (configurables por entorno).
     cors_allowed_origins: list[str] = ["http://localhost:5173"]
 
