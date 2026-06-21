@@ -213,19 +213,22 @@ class GenerarMaterialUseCase:
             "{"
             '"quiz": {"titulo": "...", "preguntas": [{"enunciado": "...", '
             '"opciones": ["a", "b", "c", "d"], "correcta": 0, "explicacion": "..."}]}, '
-            '"lectura": {"titulo": "...", "contenido": "mini-lección de 2 párrafos", '
+            '"lectura": {"titulo": "...", "contenido": "mini-lección de ~3 párrafos", '
             '"flashcards": [{"frente": "término o pregunta corta", '
             '"reverso": "definición o respuesta breve"}]}, '
             '"practica": {"titulo": "...", "ejercicios": [{"enunciado": "...", '
             '"pista": "una ayuda que oriente sin dar la respuesta", "solucion": "..."}]}, '
             '"video_query": "mejor búsqueda de YouTube para el concepto"'
             "}. "
-            "El quiz debe tener exactamente 3 preguntas de opción múltiple, cada una "
+            "El quiz debe tener entre 3 y 5 preguntas de opción múltiple, cada una "
             'con exactamente 4 opciones, "correcta" como índice (0-3) de la opción '
-            "correcta y una explicación de una frase. La lectura debe incluir 4 "
-            "flashcards (frente/reverso) breves con los conceptos clave. La práctica "
-            "debe tener 2 ejercicios, cada uno con una pista corta que oriente sin "
-            "revelar la respuesta y con su solución. Sé conciso en todo."
+            "correcta y una breve explicación. La lectura debe incluir entre 4 y 6 "
+            "flashcards (frente/reverso) con los conceptos clave para memorizar. La "
+            "práctica debe tener entre 2 y 3 ejercicios, cada uno con una pista que "
+            "oriente sin revelar la respuesta y con su solución completa. Ajusta la "
+            "profundidad al nivel del estudiante: si su dominio es bajo, incluye más "
+            "preguntas, flashcards y ejercicios, con explicaciones más detalladas; si "
+            "es alto, material más breve y retador."
         )
 
     @staticmethod
