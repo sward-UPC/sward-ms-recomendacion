@@ -21,6 +21,8 @@ class BedrockLlmAdapter(LlmClientPort):
         try:
             return await asyncio.to_thread(self._invoke, prompt)
         except Exception as e:  # best-effort: cualquier fallo => None
+            # print además del logger: el logger custom no se captura en CloudWatch.
+            print(f"[BEDROCK] falló: {e}", flush=True)
             logger.warning("Bedrock falló: %s", e)
             return None
 
@@ -29,6 +31,12 @@ class BedrockLlmAdapter(LlmClientPort):
         resp = client.converse(
             modelId=settings.bedrock_model_id,
             messages=[{"role": "user", "content": [{"text": prompt}]}],
-            inferenceConfig={"maxTokens": 1024, "temperature": 0.4},
+            inferenceConfig={
+                "maxTokens": settings.bedrock_max_tokens,
+                "temperature": 0.4,
+            },
         )
+        stop = resp.get("stopReason")
+        if stop == "max_tokens":
+            print("[BEDROCK] respuesta truncada por max_tokens", flush=True)
         return resp["output"]["message"]["content"][0]["text"]
