@@ -9,8 +9,10 @@ from src.application.use_cases.consultar_atencion import ConsultarAtencionUseCas
 from src.application.use_cases.consultar_recomendacion import (
     ConsultarRecomendacionUseCase,
 )
+from src.application.use_cases.generar_material import GenerarMaterialUseCase
 from src.application.use_cases.generar_recomendacion import GenerarRecomendacionUseCase
 from src.domain.services.modelo_sakt import ModeloSAKT
+from src.infrastructure.adapters.out_.anthropic_rest_adapter import AnthropicRestAdapter
 from src.infrastructure.adapters.out_.cursos_rest_adapter import CursosRestAdapter
 from src.infrastructure.adapters.out_.eventbridge_adapter import EventBridgeAdapter
 from src.infrastructure.adapters.out_.recomendacion_postgres_adapter import (
@@ -45,6 +47,14 @@ def get_generar_uc(
         repo=RecomendacionPostgresAdapter(session),
         event_publisher=EventBridgeAdapter(),
         modelo=modelo,
+    )
+
+
+def get_material_uc() -> GenerarMaterialUseCase:
+    return GenerarMaterialUseCase(
+        trazabilidad=TrazabilidadRestAdapter(),
+        cursos=CursosRestAdapter(),
+        llm=AnthropicRestAdapter(),
     )
 
 

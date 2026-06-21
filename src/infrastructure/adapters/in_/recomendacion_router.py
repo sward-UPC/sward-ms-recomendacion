@@ -12,6 +12,10 @@ from src.application.use_cases.consultar_recomendacion import (
     ConsultarRecomendacionCommand,
     ConsultarRecomendacionUseCase,
 )
+from src.application.use_cases.generar_material import (
+    GenerarMaterialCommand,
+    GenerarMaterialUseCase,
+)
 from src.application.use_cases.generar_recomendacion import (
     GenerarRecomendacionCommand,
     GenerarRecomendacionUseCase,
@@ -21,6 +25,7 @@ from src.infrastructure.dependencies import (
     get_completar_uc,
     get_consultar_uc,
     get_generar_uc,
+    get_material_uc,
     require_jwt,
 )
 
@@ -225,6 +230,97 @@ async def generar(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except KeyError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+class GenerarMaterialRequest(BaseModel):
+    """Solicitud para generar material de estudio sobre el concepto débil."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    estudianteId: UUID = Field(
+        ...,
+        description="UUID del estudiante",
+        json_schema_extra={"example": "550e8400-e29b-41d4-a716-446655440000"},
+    )
+    cursoId: UUID = Field(
+        ...,
+        description="UUID del curso",
+        json_schema_extra={"example": "550e8400-e29b-41d4-a716-446655440001"},
+    )
+
+
+class PreguntaMaterialResponse(BaseModel):
+    """Pregunta de práctica con su respuesta."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    pregunta: str = Field(..., description="Enunciado de la pregunta de práctica")
+    respuesta: str = Field(..., description="Respuesta correcta de la pregunta")
+
+
+class MaterialResponse(BaseModel):
+    """Material de estudio generado (o fallback vacío si el LLM no está disponible)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    disponible: bool = Field(
+        ...,
+        description="True si el LLM generó material; False en el fallback",
+    )
+    concepto: str | None = Field(
+        ...,
+        description="Concepto más débil reforzado (None si no hay interacciones)",
+    )
+    resumen: str = Field("", description="Resumen breve del concepto")
+    puntos_clave: list[str] = Field(
+        default_factory=list, description="Ideas clave del concepto"
+    )
+    preguntas: list[PreguntaMaterialResponse] = Field(
+        default_factory=list, description="Preguntas de práctica con su respuesta"
+    )
+
+
+@router.post(
+    "/material",
+    response_model=MaterialResponse,
+    responses={
+        200: {"description": "Material generado, o fallback si el LLM no está activo"},
+        401: {"description": "No autorizado - requiere autenticación JWT"},
+    },
+)
+async def generar_material(
+    body: GenerarMaterialRequest,
+    uc: GenerarMaterialUseCase = Depends(get_material_uc),
+    payload: dict = Depends(require_jwt),
+):
+    """Genera material de estudio nuevo (LLM) para reforzar el concepto débil.
+
+    Un estudiante usa su propio JWT; docente/admin pueden indicar otro en el body.
+    Todo el LLM es best-effort: si no hay clave o la llamada falla, devuelve
+    ``disponible: false`` con campos vacíos (status 200, nunca rompe).
+    """
+    estudiante_id = (
+        UUID(payload["sub"])
+        if payload.get("rol") == "estudiante"
+        else body.estudianteId
+    )
+    material = await uc.execute(
+        GenerarMaterialCommand(estudiante_id=estudiante_id, curso_id=body.cursoId)
+    )
+    return MaterialResponse(
+        disponible=material.disponible,
+        concepto=material.concepto,
+        resumen=material.resumen,
+        puntos_clave=material.puntos_clave,
+        preguntas=[
+            PreguntaMaterialResponse(
+                pregunta=str(p.get("pregunta", "")),
+                respuesta=str(p.get("respuesta", "")),
+            )
+            for p in material.preguntas
+            if isinstance(p, dict)
+        ],
+    )
 
 
 @router.get(
