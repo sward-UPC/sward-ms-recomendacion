@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     service_name: str = "sward-ms-recomendacion"
     min_recomendaciones: int = 3
     max_recomendaciones: int = 6
+    # Generación de material de estudio con LLM (Anthropic). Vacío => fallback.
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-haiku-4-5-20251001"
     # Orígenes permitidos para CORS (configurables por entorno).
     cors_allowed_origins: list[str] = ["http://localhost:5173"]
 
