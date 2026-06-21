@@ -328,8 +328,12 @@ class VerificarEjercicioRequest(BaseModel):
 
 
 class VerificacionResponse(BaseModel):
-    aprobado: bool = Field(..., description="True si la IA da por correcta la respuesta")
-    feedback: str = Field(..., description="Comentario breve y alentador para el alumno")
+    aprobado: bool = Field(
+        ..., description="True si la IA da por correcta la respuesta"
+    )
+    feedback: str = Field(
+        ..., description="Comentario breve y alentador para el alumno"
+    )
 
 
 @router.post(
