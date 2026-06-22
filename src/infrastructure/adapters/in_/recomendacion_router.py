@@ -263,6 +263,10 @@ class GenerarMaterialRequest(BaseModel):
         default=None,
         description="Formato en que el alumno rinde mejor; el LLM lo enfatiza",
     )
+    evitarConcepto: str | None = Field(
+        default=None,
+        description="Concepto ya mostrado a evitar (Generar más rota al siguiente débil)",
+    )
 
 
 class MaterialResponse(BaseModel):
@@ -327,6 +331,7 @@ async def generar_material(
             curso_id=body.cursoId,
             refrescar=body.refrescar,
             formato_preferido=body.formatoPreferido,
+            evitar_concepto=body.evitarConcepto,
         )
     )
     return MaterialResponse(
