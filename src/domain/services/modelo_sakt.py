@@ -3,6 +3,7 @@ import os
 import sys
 import tempfile
 import types as _types
+from datetime import timezone
 
 from src.domain.entities.prediccion_kt import PrediccionKT
 from src.domain.entities.secuencia_interaccion import SecuenciaInteraccion
@@ -16,6 +17,54 @@ def _mock_turtle() -> None:
         _mock = _types.ModuleType("turtle")
         _mock.forward = lambda *a, **kw: None
         sys.modules["turtle"] = _mock
+
+
+def leer_info_modelo() -> dict:
+    """Metadata REAL del modelo entrenado, leída del artefacto en S3 (no hardcode).
+
+    Fuente de verdad para el panel admin: la fecha de último reentrenamiento sale
+    del `LastModified` del objeto en S3 y los hiperparámetros/métricas del propio
+    checkpoint (consistentes con el modelo desplegado). No construye la red SAKT;
+    solo abre el dict del checkpoint, así que es liviano.
+    """
+    import boto3
+    import torch
+
+    from src.infrastructure.config.settings import settings
+
+    s3 = boto3.client("s3", region_name=settings.aws_region)
+    head = s3.head_object(
+        Bucket=settings.aws_s3_model_bucket, Key=settings.sakt_model_s3_key
+    )
+    actualizado_en = head["LastModified"].astimezone(timezone.utc).isoformat()
+    tam_bytes = int(head["ContentLength"])
+
+    # Cache local; re-descarga si cambió el tamaño (p.ej. tras un reentrenamiento).
+    local_path = os.path.join(tempfile.gettempdir(), "sakt_info.pth")
+    if not os.path.exists(local_path) or os.path.getsize(local_path) != tam_bytes:
+        s3.download_file(
+            settings.aws_s3_model_bucket, settings.sakt_model_s3_key, local_path
+        )
+
+    ckpt = torch.load(local_path, map_location="cpu", weights_only=True)
+    concept_index = ckpt.get("concept_index") or {}
+    return {
+        "n_skills": ckpt.get("n_skills"),
+        "n_conceptos": len(concept_index) or ckpt.get("n_skills"),
+        "seq_len": ckpt.get("seq_len"),
+        "emb_size": ckpt.get("emb_size"),
+        "n_heads": ckpt.get("n_heads"),
+        "n_layers": ckpt.get("n_layers"),
+        "dropout": ckpt.get("dropout"),
+        "learning_rate": ckpt.get("learning_rate"),
+        "epochs": ckpt.get("epochs"),
+        "test_auc": ckpt.get("test_auc"),
+        "n_estudiantes": ckpt.get("n_estudiantes"),
+        "n_muestras": ckpt.get("n_muestras"),
+        "entrenado_en": ckpt.get("trained_at") or actualizado_en,
+        "actualizado_en": actualizado_en,
+        "tam_bytes": tam_bytes,
+    }
 
 
 class ModeloSAKT:

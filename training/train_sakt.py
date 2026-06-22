@@ -16,9 +16,26 @@ es idéntico al de inferencia en modelo_sakt.py.
 import json
 import os
 from collections import defaultdict
+from datetime import datetime, timezone
 
 import torch
 from torch import nn
+
+
+def _auc(scores: list[float], labels: list[int]) -> float | None:
+    """AUC-ROC por rangos (Mann-Whitney U). Devuelve None si no hay ambas clases."""
+    pares = sorted(zip(scores, labels), key=lambda x: x[0])
+    suma_rangos_pos = 0.0
+    n_pos = 0
+    for i, (_, label) in enumerate(pares, start=1):
+        if label == 1:
+            suma_rangos_pos += i
+            n_pos += 1
+    n_neg = len(pares) - n_pos
+    if n_pos == 0 or n_neg == 0:
+        return None
+    return (suma_rangos_pos - n_pos * (n_pos + 1) / 2) / (n_pos * n_neg)
+
 
 # Hiperparámetros (overridibles por env). El modelo es chico → entrena en CPU.
 SEQ_LEN = int(os.environ.get("SEQ_LEN", "64"))
@@ -117,11 +134,20 @@ def main():
     tgts = torch.FloatTensor([m[3] for m in muestras])
     masks = torch.FloatTensor([m[4] for m in muestras])
 
+    # Split entrenamiento/validación (holdout 15%) para reportar un AUC honesto.
+    # Con pocas muestras se entrena con todo y el AUC queda en None.
     n = len(muestras)
+    torch.manual_seed(42)
+    perm_split = torch.randperm(n)
+    n_val = n // 7 if n >= 8 else 0
+    val_idx = perm_split[:n_val]
+    train_idx = perm_split[n_val:]
+
+    n_train = len(train_idx)
     for ep in range(EPOCHS):
-        perm = torch.randperm(n)
+        perm = train_idx[torch.randperm(n_train)]
         total = 0.0
-        for i in range(0, n, BATCH):
+        for i in range(0, n_train, BATCH):
             b = perm[i : i + BATCH]
             opt.zero_grad()
             out = model(qs[b], rs[b], qrys[b])  # pyKT SAKT aplica sigmoid → probs
@@ -132,9 +158,25 @@ def main():
             opt.step()
             total += loss.item()
         if ep % 5 == 0 or ep == EPOCHS - 1:
-            print(f"  epoch {ep:>3} | loss {total / max(1, n // BATCH):.4f}")
+            print(f"  epoch {ep:>3} | loss {total / max(1, n_train // BATCH):.4f}")
 
     model.eval()
+
+    # Evaluación: AUC sobre las posiciones válidas del holdout de validación.
+    test_auc = None
+    try:
+        if n_val > 0:
+            with torch.no_grad():
+                out_v = model(qs[val_idx], rs[val_idx], qrys[val_idx]).view(
+                    tgts[val_idx].shape
+                )
+            sel = masks[val_idx] == 1
+            test_auc = _auc(out_v[sel].tolist(), [int(t) for t in tgts[val_idx][sel]])
+        if test_auc is not None:
+            print(f"  AUC validación = {test_auc:.4f} (n_val={n_val})")
+    except Exception as e:  # noqa: BLE001 — el AUC es informativo, no debe romper el train
+        print(f"  (no se pudo calcular AUC: {e})")
+
     torch.save(
         {
             "n_skills": n_skills,
@@ -143,6 +185,12 @@ def main():
             "n_heads": N_HEADS,
             "dropout": DROPOUT,
             "n_layers": N_LAYERS,
+            "learning_rate": LR,
+            "epochs": EPOCHS,
+            "test_auc": test_auc,
+            "n_estudiantes": len(seqs),
+            "n_muestras": n,
+            "trained_at": datetime.now(timezone.utc).isoformat(),
             "concept_index": concept_index,
             "model_state_dict": model.state_dict(),
         },

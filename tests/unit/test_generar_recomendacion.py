@@ -37,6 +37,7 @@ CANDIDATOS = [
 @pytest.fixture
 def use_case():
     trazabilidad = AsyncMock()
+    trazabilidad.obtener_preferencias.return_value = None
     trazabilidad.obtener_secuencia.return_value = SecuenciaInteraccion(
         estudiante_id=uuid4(),
         curso_id=uuid4(),
@@ -118,6 +119,7 @@ async def test_prioriza_estudio_sobre_practica(use_case):
 @pytest.mark.asyncio
 async def test_targetea_concepto_debil_y_salta_si_vacio():
     trazabilidad = AsyncMock()
+    trazabilidad.obtener_preferencias.return_value = None
     trazabilidad.obtener_secuencia.return_value = SecuenciaInteraccion(
         estudiante_id=uuid4(),
         curso_id=uuid4(),
@@ -148,6 +150,7 @@ async def test_targetea_concepto_debil_y_salta_si_vacio():
 async def test_cubre_varios_conceptos_debiles():
     """Con varios conceptos débiles, la recomendación cubre más de uno (no solo 1)."""
     trazabilidad = AsyncMock()
+    trazabilidad.obtener_preferencias.return_value = None
     trazabilidad.obtener_secuencia.return_value = SecuenciaInteraccion(
         estudiante_id=uuid4(),
         curso_id=uuid4(),
