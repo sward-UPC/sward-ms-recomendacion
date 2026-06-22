@@ -24,6 +24,8 @@ from src.application.use_cases.verificar_ejercicio import (
     VerificarEjercicioCommand,
     VerificarEjercicioUseCase,
 )
+from src.domain.services.modelo_sakt import leer_info_modelo
+from src.infrastructure.config.settings import settings
 from src.infrastructure.dependencies import (
     get_atencion_uc,
     get_completar_uc,
@@ -32,6 +34,7 @@ from src.infrastructure.dependencies import (
     get_material_uc,
     get_verificar_ejercicio_uc,
     require_jwt,
+    require_service_key,
 )
 
 router = APIRouter(prefix="/recommendations", tags=["Recomendación"])
@@ -511,3 +514,32 @@ async def atencion(
             for p in res.puntos
         ],
     )
+
+
+@router.get(
+    "/internal/model-info",
+    summary="Metadata real del modelo SAKT (s2s)",
+    responses={
+        200: {"description": "Metadata del modelo entrenado"},
+        401: {"description": "Service-key inválida"},
+        503: {"description": "No se pudo leer el modelo desde S3"},
+    },
+    include_in_schema=False,
+)
+async def model_info(_auth: None = Depends(require_service_key)):
+    """Metadata REAL del modelo (fecha de entreno, hiperparámetros, AUC).
+
+    Consumido s2s por ms-usuarios para el panel admin. La lee del artefacto en S3,
+    así que refleja siempre el modelo desplegado (no valores hardcodeados).
+    `mock=true` indica que ESTE entorno corre el modelo simulado (desarrollo),
+    aunque la metadata describe igual el artefacto entrenado en S3.
+    """
+    es_mock = settings.environment == "development"
+    try:
+        info = leer_info_modelo()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"No se pudo leer el modelo desde S3: {exc}",
+        ) from exc
+    return {"mock": es_mock, **info}
