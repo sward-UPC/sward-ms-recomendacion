@@ -120,6 +120,16 @@ class GenerarMaterialUseCase:
         if video is not None:
             recursos.append(video)
 
+        # Más peso al formato fuerte: el LLM ya lo hace más rico (los demás breves);
+        # aquí además lo ponemos PRIMERO para que lidere el material.
+        tipo_pref = (
+            self._FORMATO_TIPO.get(str(cmd.formato_preferido).lower())
+            if cmd.formato_preferido
+            else None
+        )
+        if tipo_pref:
+            recursos.sort(key=lambda r: 0 if r.get("tipo") == tipo_pref else 1)
+
         tipos = [r.get("tipo") for r in recursos]
         print(
             f"[MATERIAL] OK | concepto={concepto_debil!r} recursos={tipos}",
@@ -232,6 +242,22 @@ class GenerarMaterialUseCase:
         "practica": "la práctica (más ejercicios con pista y solución)",
         "assign": "la práctica (más ejercicios con pista y solución)",
         "presentacion": "la lectura (mini-lección extensa y muchas flashcards)",
+    }
+
+    # Mapea el formato preferido al TIPO de recurso del material, para liderar con él.
+    _FORMATO_TIPO = {
+        "lectura": "lectura",
+        "page": "lectura",
+        "book": "lectura",
+        "resource": "lectura",
+        "presentacion": "lectura",
+        "video": "video",
+        "url": "video",
+        "quiz": "quiz",
+        "ejercicio": "practica",
+        "practica": "practica",
+        "assign": "practica",
+        "workshop": "practica",
     }
 
     @staticmethod
