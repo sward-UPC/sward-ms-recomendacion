@@ -21,6 +21,36 @@ from src.infrastructure.config.settings import settings
 _RECOMENDACION_CACHE: dict[tuple[str, str], tuple[float, "Recomendacion"]] = {}
 
 
+# Preferencia de formato: clasifica tipos (Moodle y SWARD) en práctica vs estudio,
+# para que el motor priorice el formato en el que el estudiante rinde/consume mejor.
+_PRACTICA_TIPOS = {
+    "quiz",
+    "assign",
+    "workshop",
+    "ejercicio",
+    "practica",
+    "práctica",
+    "tarea",
+    "taller",
+}
+# Moodle modname → tipo SWARD del catálogo de recursos (para match fino de formato).
+_MOODLE_A_SWARD = {
+    "url": "video",
+    "page": "lectura",
+    "book": "lectura",
+    "lesson": "lectura",
+    "resource": "lectura",
+    "quiz": "quiz",
+    "assign": "ejercicio",
+    "workshop": "ejercicio",
+}
+
+
+def _categoria(tipo: str) -> str:
+    """Categoría gruesa del recurso: 'practica' o 'estudio'."""
+    return "practica" if (tipo or "").lower() in _PRACTICA_TIPOS else "estudio"
+
+
 @dataclass
 class GenerarRecomendacionCommand:
     estudiante_id: UUID
@@ -62,6 +92,19 @@ class GenerarRecomendacionUseCase:
         )
         prediccion = self._modelo.predecir_dominio(secuencia)
 
+        # Preferencia de formato (best-effort): en qué tipo de recurso rinde/consume
+        # mejor el estudiante. El SAKT decide QUÉ conceptos reforzar; la preferencia
+        # decide CON QUÉ formato (p.ej. liderar con práctica si ahí rinde mejor).
+        prefs = await self._trazabilidad.obtener_preferencias(
+            cmd.estudiante_id, cmd.curso_id
+        )
+        pref_tipo = ""
+        if prefs:
+            pref_tipo = (
+                prefs.get("tipo_fuerte") or prefs.get("formato_mas_consumido") or ""
+            )
+        prefiere_practica = bool(pref_tipo) and _categoria(pref_tipo) == "practica"
+
         # Top-K conceptos más débiles según el dominio estimado por sección. Antes
         # solo targeteábamos UNO → muy pocos items; ahora cubrimos varios conceptos
         # (estudiar + practicar por cada uno), tan rico como el motor del docente.
@@ -83,7 +126,13 @@ class GenerarRecomendacionUseCase:
                 continue
             items.extend(
                 self._rankear_concepto(
-                    candidatos, dominio_sec, concepto, usados, por_concepto
+                    candidatos,
+                    dominio_sec,
+                    concepto,
+                    usados,
+                    por_concepto,
+                    pref_tipo=pref_tipo,
+                    prefiere_practica=prefiere_practica,
                 )
             )
 
@@ -99,6 +148,8 @@ class GenerarRecomendacionUseCase:
                 None,
                 usados,
                 por_concepto=settings.max_recomendaciones,
+                pref_tipo=pref_tipo,
+                prefiere_practica=prefiere_practica,
             )
 
         # Límite global y renumeración del orden.
@@ -156,10 +207,16 @@ class GenerarRecomendacionUseCase:
         concepto: str | None,
         usados: set[str],
         por_concepto: int = 2,
+        pref_tipo: str = "",
+        prefiere_practica: bool = False,
     ) -> list[ItemRecomendado]:
-        """Elige los mejores recursos de un concepto: prioriza 1 de estudio + 1 de
-        práctica (estudiar y luego aplicar), sin repetir lo ya elegido en otros
-        conceptos. ``por_concepto`` topa cuántos recursos aporta este concepto.
+        """Elige los mejores recursos de un concepto: estudiar + practicar, sin
+        repetir lo ya elegido en otros conceptos. ``por_concepto`` topa cuántos
+        aporta este concepto.
+
+        Si hay preferencia de formato (``pref_tipo``), prioriza ese formato:
+        lidera con práctica cuando el estudiante rinde mejor practicando, y da un
+        bonus de score al tipo preferido (así el modelo SÍ lo tiene en cuenta).
         """
         nivel_obj = (
             "basico" if dominio < 0.4 else "intermedio" if dominio < 0.7 else "avanzado"
@@ -169,6 +226,13 @@ class GenerarRecomendacionUseCase:
 
         tipos_estudio = {"lectura", "video", "presentacion"}
         tipos_foro = {"foro", "forum"}
+
+        # Tipo SWARD equivalente al formato preferido (Moodle), para el match fino.
+        pref_sward = (
+            _MOODLE_A_SWARD.get(pref_tipo.lower(), pref_tipo.lower())
+            if pref_tipo
+            else ""
+        )
 
         def es_foro(r: dict) -> bool:
             tipo = str(r.get("tipo", "")).lower()
@@ -182,9 +246,27 @@ class GenerarRecomendacionUseCase:
             dist = abs(orden.get(r.get("nivel_dificultad", "intermedio"), 1) - obj_idx)
             return 1.0 / (1 + dist)
 
+        def bonus_pref(r: dict) -> float:
+            """Bonus por alinear con la preferencia del estudiante."""
+            if not pref_tipo:
+                return 0.0
+            t = str(r.get("tipo", "")).lower()
+            if pref_sward and t == pref_sward:
+                return 0.25  # match fino de formato (ej. video)
+            if _categoria(t) == _categoria(pref_tipo):
+                return 0.12  # match de categoría (práctica vs estudio)
+            return 0.0
+
         def score(r: dict) -> float:
-            base = 0.6 if es_estudio(r) else 0.3 if not es_foro(r) else 0.0
-            return round(min(1.0, base + 0.4 * alineamiento(r)), 4)
+            # Base preferencia-aware: si rinde mejor practicando, la práctica pesa
+            # más que el estudio (y viceversa, que es el comportamiento por defecto).
+            if es_foro(r):
+                base = 0.0
+            elif es_estudio(r):
+                base = 0.45 if prefiere_practica else 0.6
+            else:
+                base = 0.6 if prefiere_practica else 0.3
+            return round(min(1.0, base + 0.4 * alineamiento(r) + bonus_pref(r)), 4)
 
         def clave(r: dict) -> str:
             return str(r.get("url") or r.get("id") or r.get("titulo") or "")
@@ -200,16 +282,18 @@ class GenerarRecomendacionUseCase:
             [r for r in disponibles if not es_estudio(r)], key=lambda r: -score(r)
         )
 
-        # Intercala estudiar/practicar para que cada concepto traiga ambos formatos.
+        # Lidera con el formato preferido (práctica si ahí rinde mejor; si no,
+        # estudiar→practicar), e intercala para traer variedad.
+        buckets = [practica, estudio] if prefiere_practica else [estudio, practica]
         elegidos: list[dict] = []
-        i = j = 0
-        while len(elegidos) < por_concepto and (i < len(estudio) or j < len(practica)):
-            if i < len(estudio):
-                elegidos.append(estudio[i])
-                i += 1
-            if len(elegidos) < por_concepto and j < len(practica):
-                elegidos.append(practica[j])
-                j += 1
+        idxs = [0, 0]
+        while len(elegidos) < por_concepto and any(
+            idxs[k] < len(buckets[k]) for k in (0, 1)
+        ):
+            for k in (0, 1):
+                if len(elegidos) < por_concepto and idxs[k] < len(buckets[k]):
+                    elegidos.append(buckets[k][idxs[k]])
+                    idxs[k] += 1
 
         concepto_txt = concepto or "los conceptos del curso"
         items: list[ItemRecomendado] = []
@@ -221,6 +305,12 @@ class GenerarRecomendacionUseCase:
                 f"{dominio:.0%}. "
                 f"{'Material de estudio' if estudia else 'Práctica'} para afianzar."
             )
+            # Explicación honesta cuando se priorizó por la preferencia de formato.
+            if pref_tipo and _categoria(str(r.get("tipo", "")).lower()) == _categoria(
+                pref_tipo
+            ):
+                fmt = "practicando" if prefiere_practica else "con material de estudio"
+                motivo += f" Priorizado: rindes mejor {fmt}."
             items.append(
                 ItemRecomendado(
                     recurso_id=str(r.get("id", "")),
