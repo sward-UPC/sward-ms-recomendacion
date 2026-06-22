@@ -26,6 +26,9 @@ class GenerarMaterialCommand:
     # Formato en el que el alumno aprende/rinde mejor (lectura/video/quiz/práctica),
     # según la señal de preferencia. El LLM lo enfatiza si viene.
     formato_preferido: str | None = None
+    # Concepto a EVITAR (el que ya se mostró): en "Generar más" rota al siguiente
+    # concepto débil para traer material genuinamente nuevo, no el mismo.
+    evitar_concepto: str | None = None
 
 
 @dataclass
@@ -79,7 +82,10 @@ class GenerarMaterialUseCase:
         secuencia = await self._trazabilidad.obtener_secuencia(
             cmd.estudiante_id, cmd.curso_id
         )
-        concepto_debil, dominio = self._concepto_mas_debil(secuencia)
+        # En "Generar más" rota al siguiente concepto débil (evita repetir el actual).
+        concepto_debil, dominio = self._concepto_mas_debil(
+            secuencia, evitar=cmd.evitar_concepto if cmd.refrescar else None
+        )
 
         candidatos = await self._cursos.obtener_recursos_candidatos(
             cmd.curso_id, limit=8, seccion=concepto_debil
@@ -288,11 +294,15 @@ class GenerarMaterialUseCase:
         return data if isinstance(data, dict) else None
 
     @staticmethod
-    def _concepto_mas_debil(secuencia) -> tuple[str | None, int]:
+    def _concepto_mas_debil(
+        secuencia, evitar: str | None = None
+    ) -> tuple[str | None, int]:
         """Concepto con menor promedio de aciertos y ese promedio en %.
 
-        Reutiliza la lógica de generar_recomendacion: agrupa por concepto y toma
-        el de menor promedio de aciertos (>= 1 interacción).
+        Agrupa por concepto y toma el de menor promedio de aciertos (>= 1
+        interacción). Si ``evitar`` se indica y hay más de un concepto, devuelve
+        el siguiente más débil distinto de ``evitar`` (para que "Generar más"
+        rote y no repita el mismo concepto).
         """
         conceptos = getattr(secuencia, "concepto_ids", None) or []
         aciertos = getattr(secuencia, "respuestas_correctas", None) or []
@@ -309,6 +319,11 @@ class GenerarMaterialUseCase:
             return None, 50
 
         promedios = {c: suma[c] / cuenta[c] for c in cuenta}
-        concepto_debil = min(promedios, key=lambda c: promedios[c])
-        dominio = round(promedios[concepto_debil] * 100)
-        return concepto_debil, dominio
+        # De más débil a más fuerte.
+        ordenados = sorted(promedios, key=lambda c: promedios[c])
+        # Rota: salta el concepto a evitar si hay alternativa.
+        elegido = ordenados[0]
+        if evitar is not None and len(ordenados) > 1:
+            elegido = next((c for c in ordenados if c != evitar), ordenados[0])
+        dominio = round(promedios[elegido] * 100)
+        return elegido, dominio
