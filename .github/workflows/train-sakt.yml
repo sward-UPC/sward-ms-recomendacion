@@ -1,18 +1,54 @@
 name: Entrenar modelo SAKT
 
 # Auto-entrenamiento del modelo SAKT con las interacciones reales.
-# Corre solo cada semana y también a demanda. Entrena en CPU (modelo chico),
-# sube el checkpoint a S3 y fuerza el redeploy de ms-recomendacion para recargar.
+# Corre semanal (lunes) y a demanda. Entrena en CPU (modelo chico), sube el
+# checkpoint a S3 y fuerza el redeploy de ms-recomendacion para recargar.
+#
+# En modo dev la infra se APAGA cada noche (stop.yml: RDS + ECS a 0), así que el
+# job programado encontraba la API caída (503). Por eso, en corridas PROGRAMADAS,
+# este workflow enciende lo mínimo (RDS + trazabilidad), entrena y vuelve a
+# apagar. En corridas manuales asume que ya levantaste la infra.
 on:
   schedule:
     - cron: '0 6 * * 1' # lunes 06:00 UTC
   workflow_dispatch: {}
+
+env:
+  CLUSTER: sward-cluster
 
 jobs:
   train:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      # ── Solo en corridas programadas: encender RDS + trazabilidad ──────────
+      - name: Encender infra necesaria (schedule)
+        if: github.event_name == 'schedule'
+        run: |
+          echo "=== Encendiendo RDS sward (apagados por stop.yml nocturno) ==="
+          INSTANCIAS=$(aws rds describe-db-instances \
+            --query "DBInstances[?contains(DBInstanceIdentifier,'sward')].DBInstanceIdentifier" --output text)
+          for I in $INSTANCIAS; do
+            ESTADO=$(aws rds describe-db-instances --db-instance-identifier "$I" \
+              --query "DBInstances[0].DBInstanceStatus" --output text)
+            if [ "$ESTADO" = "stopped" ]; then
+              aws rds start-db-instance --db-instance-identifier "$I" --no-cli-pager >/dev/null && echo "→ iniciando $I"
+            else
+              echo "↷ $I ($ESTADO)"
+            fi
+          done
+          for I in $INSTANCIAS; do aws rds wait db-instance-available --db-instance-identifier "$I" && echo "✓ $I disponible"; done
+          echo "=== Escalando trazabilidad a 1 y esperando estabilidad ==="
+          aws ecs update-service --cluster "$CLUSTER" --service trazabilidad --desired-count 1 --no-cli-pager >/dev/null
+          aws ecs wait services-stable --cluster "$CLUSTER" --services trazabilidad || true
 
       - uses: actions/setup-python@v5
         with:
@@ -28,25 +64,48 @@ jobs:
           API_URL: ${{ secrets.SWARD_API_URL }}
           SERVICE_KEY: ${{ secrets.TRAZABILIDAD_SERVICE_KEY }}
         run: |
-          curl -fsS "$API_URL/api/v1/dashboard/training-data" \
-            -H "X-Service-Key: $SERVICE_KEY" -o training_data.json
+          # Reintenta: tras encender ECS el target del ALB tarda en quedar sano.
+          for intento in $(seq 1 12); do
+            if curl -fsS "$API_URL/api/v1/dashboard/training-data" \
+                 -H "X-Service-Key: $SERVICE_KEY" -o training_data.json; then
+              break
+            fi
+            echo "Intento $intento/12: API no lista, reintento en 15s..."
+            sleep 15
+          done
+          if [ ! -s training_data.json ]; then
+            echo "::error::La API no respondió tras 12 intentos (¿servicios apagados?). Aborta."
+            exit 1
+          fi
           echo "Interacciones: $(python -c 'import json;print(len(json.load(open("training_data.json"))))')"
 
       - name: Entrenar SAKT
         run: python training/train_sakt.py
-
-      - name: Configurar credenciales AWS
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
 
       - name: Subir modelo a S3
         run: aws s3 cp model.pth s3://sward-models/sakt/moodle/model.pth
 
       - name: Recargar modelo en ms-recomendacion (redeploy)
         run: |
-          aws ecs update-service --cluster sward-cluster \
+          aws ecs update-service --cluster "$CLUSTER" \
             --service recomendacion --force-new-deployment >/dev/null
           echo "Redeploy de ms-recomendacion disparado (recarga el modelo nuevo al arrancar)."
+
+      # ── Solo en programadas: devolver la infra a apagado (dev). always(): aun
+      #    si el entrenamiento falla, no dejamos servicios encendidos costando. ──
+      - name: Apagar infra de nuevo (schedule)
+        if: always() && github.event_name == 'schedule'
+        run: |
+          echo "=== Devolviendo trazabilidad a 0 y deteniendo RDS ==="
+          aws ecs update-service --cluster "$CLUSTER" --service trazabilidad --desired-count 0 --no-cli-pager >/dev/null || true
+          INSTANCIAS=$(aws rds describe-db-instances \
+            --query "DBInstances[?contains(DBInstanceIdentifier,'sward')].DBInstanceIdentifier" --output text)
+          for I in $INSTANCIAS; do
+            ESTADO=$(aws rds describe-db-instances --db-instance-identifier "$I" \
+              --query "DBInstances[0].DBInstanceStatus" --output text)
+            if [ "$ESTADO" = "available" ]; then
+              aws rds stop-db-instance --db-instance-identifier "$I" --no-cli-pager >/dev/null && echo "✓ $I detenida"
+            else
+              echo "↷ $I ($ESTADO)"
+            fi
+          done
