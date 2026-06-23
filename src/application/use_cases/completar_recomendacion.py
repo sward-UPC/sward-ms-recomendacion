@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from uuid import UUID
 
-from src.domain.ports.out_.recomendacion_repository_port import (
+from src.application.ports.out_.recomendacion_repository_port import (
     RecomendacionRepositoryPort,
 )
 from src.domain.value_objects.estado_recomendacion import EstadoRecomendacion

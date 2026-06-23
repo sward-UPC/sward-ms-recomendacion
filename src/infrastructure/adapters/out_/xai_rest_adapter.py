@@ -2,7 +2,7 @@ from uuid import UUID
 
 import httpx
 
-from src.domain.ports.out_.xai_client_port import XaiClientPort
+from src.application.ports.out_.xai_client_port import XaiClientPort
 from src.infrastructure.config.settings import settings
 
 

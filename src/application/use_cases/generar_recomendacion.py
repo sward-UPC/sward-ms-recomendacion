@@ -4,14 +4,14 @@ from uuid import UUID
 
 from src.domain.entities.recomendacion import ItemRecomendado, Recomendacion
 from src.domain.events.recomendacion_generada_event import RecomendacionGeneradaEvent
-from src.domain.ports.out_.cursos_client_port import CursosClientPort
-from src.domain.ports.out_.event_publisher_port import EventPublisherPort
-from src.domain.ports.out_.modelo_kt_port import ModeloKTPort
-from src.domain.ports.out_.recomendacion_repository_port import (
+from src.application.ports.out_.cursos_client_port import CursosClientPort
+from src.application.ports.out_.event_publisher_port import EventPublisherPort
+from src.application.ports.out_.modelo_kt_port import ModeloKTPort
+from src.application.ports.out_.recomendacion_repository_port import (
     RecomendacionRepositoryPort,
 )
-from src.domain.ports.out_.trazabilidad_client_port import TrazabilidadClientPort
-from src.domain.ports.out_.xai_client_port import XaiClientPort
+from src.application.ports.out_.trazabilidad_client_port import TrazabilidadClientPort
+from src.application.ports.out_.xai_client_port import XaiClientPort
 
 
 # Cache en memoria de la recomendación SAKT por estudiante+curso. Generar implica

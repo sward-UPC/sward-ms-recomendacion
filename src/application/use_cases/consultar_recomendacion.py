@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from src.domain.entities.recomendacion import Recomendacion
-from src.domain.ports.out_.recomendacion_repository_port import (
+from src.application.ports.out_.recomendacion_repository_port import (
     RecomendacionRepositoryPort,
 )
 
