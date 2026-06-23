@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from uuid import UUID
 
-from src.domain.ports.out_.modelo_kt_port import ModeloKTPort
-from src.domain.ports.out_.trazabilidad_client_port import TrazabilidadClientPort
+from src.application.ports.out_.modelo_kt_port import ModeloKTPort
+from src.application.ports.out_.trazabilidad_client_port import TrazabilidadClientPort
 
 
 @dataclass

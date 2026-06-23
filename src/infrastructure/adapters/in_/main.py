@@ -1,39 +1,26 @@
-import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from scalar_fastapi import get_scalar_api_reference
 
+from src.application.use_cases.consultar_modelo_info import ModeloInfoNoDisponibleError
 from src.infrastructure.adapters.in_.recomendacion_router import router
 from src.infrastructure.config.settings import settings
 from src.infrastructure.db.database import engine
-from src.infrastructure.db.models.recomendacion_models import Base
 
-
-async def _init_db() -> None:
-    for intento in range(10):
-        try:
-            async with engine.begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
-            logger.info("Base de datos lista.")
-            return
-        except Exception as exc:
-            logger.warning("BD no disponible (intento %d/10): %s", intento + 1, exc)
-            await asyncio.sleep(5)
-    logger.error("No se pudo conectar a la BD tras 10 intentos.")
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    asyncio.create_task(_init_db())
+    # El esquema lo gestiona Alembic (`alembic upgrade head` en el entrypoint del
+    # contenedor); aquí solo liberamos el engine al apagar.
     yield
     await engine.dispose()
 
-
-logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="SWARD — Microservicio de Recomendación Adaptativa",
@@ -72,6 +59,33 @@ async def security_headers(request: Request, call_next):
             "max-age=31536000; includeSubDomains"
         )
     return response
+
+
+@app.exception_handler(KeyError)
+async def not_found_handler(request: Request, exc: KeyError) -> JSONResponse:
+    # Recurso inexistente (estudiante/curso/recomendación) señalado por la capa de
+    # aplicación. str(KeyError) conserva las comillas, igual que la respuesta previa.
+    return JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND, content={"detail": str(exc)}
+    )
+
+
+@app.exception_handler(ValueError)
+async def bad_request_handler(request: Request, exc: ValueError) -> JSONResponse:
+    # Datos de entrada inválidos señalados por la capa de aplicación.
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST, content={"detail": str(exc)}
+    )
+
+
+@app.exception_handler(ModeloInfoNoDisponibleError)
+async def modelo_info_no_disponible_handler(
+    request: Request, exc: ModeloInfoNoDisponibleError
+) -> JSONResponse:
+    # No se pudo leer el artefacto del modelo desde S3 (endpoint interno model-info).
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content={"detail": str(exc)}
+    )
 
 
 @app.exception_handler(Exception)

@@ -2,7 +2,7 @@ from uuid import UUID
 
 import httpx
 
-from src.domain.ports.out_.cursos_client_port import CursosClientPort
+from src.application.ports.out_.cursos_client_port import CursosClientPort
 from src.infrastructure.config.settings import settings
 
 MOCK_RESOURCES = [
