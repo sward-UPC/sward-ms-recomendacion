@@ -7,7 +7,7 @@ from src.application.use_cases.generar_recomendacion import (
     GenerarRecomendacionUseCase,
 )
 from src.domain.entities.secuencia_interaccion import SecuenciaInteraccion
-from src.domain.services.modelo_sakt import ModeloSAKT
+from src.infrastructure.adapters.out_.modelo_kt_mock_adapter import ModeloKtMockAdapter
 
 CANDIDATOS = [
     {
@@ -51,7 +51,7 @@ def use_case():
     repo = AsyncMock()
     repo.save.side_effect = lambda r: r
     return GenerarRecomendacionUseCase(
-        trazabilidad, cursos, xai, repo, MagicMock(), ModeloSAKT(mock=True)
+        trazabilidad, cursos, xai, repo, MagicMock(), ModeloKtMockAdapter()
     )
 
 
@@ -133,7 +133,7 @@ async def test_targetea_concepto_debil_y_salta_si_vacio():
     repo = AsyncMock()
     repo.save.side_effect = lambda r: r
     uc = GenerarRecomendacionUseCase(
-        trazabilidad, cursos, xai, repo, MagicMock(), ModeloSAKT(mock=True)
+        trazabilidad, cursos, xai, repo, MagicMock(), ModeloKtMockAdapter()
     )
     rec = await uc.execute(
         GenerarRecomendacionCommand(estudiante_id=uuid4(), curso_id=uuid4())
@@ -162,7 +162,7 @@ async def test_cubre_varios_conceptos_debiles():
     repo = AsyncMock()
     repo.save.side_effect = lambda r: r
     uc = GenerarRecomendacionUseCase(
-        trazabilidad, cursos, AsyncMock(), repo, MagicMock(), ModeloSAKT(mock=True)
+        trazabilidad, cursos, AsyncMock(), repo, MagicMock(), ModeloKtMockAdapter()
     )
     rec = await uc.execute(
         GenerarRecomendacionCommand(estudiante_id=uuid4(), curso_id=uuid4())

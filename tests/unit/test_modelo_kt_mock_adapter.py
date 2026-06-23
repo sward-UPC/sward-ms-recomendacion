@@ -1,18 +1,18 @@
 from uuid import uuid4
 
 from src.domain.entities.secuencia_interaccion import SecuenciaInteraccion
-from src.domain.services.modelo_sakt import ModeloSAKT
+from src.infrastructure.adapters.out_.modelo_kt_mock_adapter import ModeloKtMockAdapter
 
 
 def test_sin_historial_retorna_05():
-    m = ModeloSAKT(mock=True)
+    m = ModeloKtMockAdapter()
     s = SecuenciaInteraccion(estudiante_id=uuid4(), curso_id=uuid4())
     p = m.predecir_dominio(s)
     assert p.probabilidad_dominio == 0.5
 
 
 def test_todo_correcto_retorna_10():
-    m = ModeloSAKT(mock=True)
+    m = ModeloKtMockAdapter()
     s = SecuenciaInteraccion(
         estudiante_id=uuid4(),
         curso_id=uuid4(),
@@ -24,7 +24,7 @@ def test_todo_correcto_retorna_10():
 
 
 def test_todo_incorrecto_retorna_00():
-    m = ModeloSAKT(mock=True)
+    m = ModeloKtMockAdapter()
     s = SecuenciaInteraccion(
         estudiante_id=uuid4(),
         curso_id=uuid4(),
@@ -36,7 +36,7 @@ def test_todo_incorrecto_retorna_00():
 
 
 def test_pesos_atencion_uniformes():
-    m = ModeloSAKT(mock=True)
+    m = ModeloKtMockAdapter()
     s = SecuenciaInteraccion(
         estudiante_id=uuid4(),
         curso_id=uuid4(),
