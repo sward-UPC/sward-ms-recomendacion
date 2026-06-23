@@ -8,7 +8,6 @@ from src.domain.ports.out_.cursos_client_port import CursosClientPort
 from src.domain.ports.out_.llm_client_port import LlmClientPort
 from src.domain.ports.out_.trazabilidad_client_port import TrazabilidadClientPort
 from src.domain.ports.out_.youtube_client_port import YoutubeClientPort
-from src.infrastructure.config.settings import settings
 
 # Cache en memoria del material generado (clave: estudiante+curso). Generar cuesta
 # una llamada a Bedrock + una a YouTube y tarda unos segundos; el concepto débil
@@ -60,11 +59,13 @@ class GenerarMaterialUseCase:
         cursos: CursosClientPort,
         llm: LlmClientPort,
         youtube: YoutubeClientPort,
+        cache_ttl_s: int = 21600,
     ):
         self._trazabilidad = trazabilidad
         self._cursos = cursos
         self._llm = llm
         self._youtube = youtube
+        self._cache_ttl_s = cache_ttl_s
 
     async def execute(self, cmd: GenerarMaterialCommand) -> MaterialGenerado:
         # Cache HIT: devuelve sin tocar Bedrock/YouTube/trazabilidad (rápido y barato).
@@ -74,7 +75,7 @@ class GenerarMaterialUseCase:
         if (
             not cmd.refrescar
             and cacheado is not None
-            and ahora - cacheado[0] < settings.material_cache_ttl_s
+            and ahora - cacheado[0] < self._cache_ttl_s
         ):
             print(f"[MATERIAL] cache HIT | {cache_key[0]}", flush=True)
             return cacheado[1]

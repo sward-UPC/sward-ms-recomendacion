@@ -12,13 +12,15 @@ from src.application.use_cases.consultar_recomendacion import (
 from src.application.use_cases.generar_material import GenerarMaterialUseCase
 from src.application.use_cases.generar_recomendacion import GenerarRecomendacionUseCase
 from src.application.use_cases.verificar_ejercicio import VerificarEjercicioUseCase
-from src.domain.services.modelo_sakt import ModeloSAKT
+from src.domain.ports.out_.modelo_kt_port import ModeloKTPort
 from src.infrastructure.adapters.out_.bedrock_llm_adapter import BedrockLlmAdapter
 from src.infrastructure.adapters.out_.cursos_rest_adapter import CursosRestAdapter
 from src.infrastructure.adapters.out_.eventbridge_adapter import EventBridgeAdapter
+from src.infrastructure.adapters.out_.modelo_kt_mock_adapter import ModeloKtMockAdapter
 from src.infrastructure.adapters.out_.recomendacion_postgres_adapter import (
     RecomendacionPostgresAdapter,
 )
+from src.infrastructure.adapters.out_.sakt_pykt_adapter import SaktPyktAdapter
 from src.infrastructure.adapters.out_.trazabilidad_rest_adapter import (
     TrazabilidadRestAdapter,
 )
@@ -34,13 +36,17 @@ require_jwt = build_require_jwt(settings.secret_key, algorithm=settings.jwt_algo
 require_service_key = build_require_service_key(settings.authorized_service_keys_set)
 
 
-def get_modelo() -> ModeloSAKT:
-    return ModeloSAKT(mock=(settings.environment == "development"))
+def get_modelo() -> ModeloKTPort:
+    # Composition root: el entorno decide el adaptador (mock en development,
+    # SAKT real con torch/pyKT/S3 en el resto), igual que antes.
+    if settings.environment == "development":
+        return ModeloKtMockAdapter()
+    return SaktPyktAdapter()
 
 
 def get_generar_uc(
     session: AsyncSession = Depends(get_session),
-    modelo: ModeloSAKT = Depends(get_modelo),
+    modelo: ModeloKTPort = Depends(get_modelo),
 ) -> GenerarRecomendacionUseCase:
     return GenerarRecomendacionUseCase(
         trazabilidad=TrazabilidadRestAdapter(),
@@ -49,6 +55,9 @@ def get_generar_uc(
         repo=RecomendacionPostgresAdapter(session),
         event_publisher=EventBridgeAdapter(),
         modelo=modelo,
+        cache_ttl_s=settings.recomendacion_cache_ttl_s,
+        max_conceptos_debiles=settings.max_conceptos_debiles,
+        max_recomendaciones=settings.max_recomendaciones,
     )
 
 
@@ -58,6 +67,7 @@ def get_material_uc() -> GenerarMaterialUseCase:
         cursos=CursosRestAdapter(),
         llm=BedrockLlmAdapter(),
         youtube=YoutubeRestAdapter(),
+        cache_ttl_s=settings.material_cache_ttl_s,
     )
 
 
@@ -66,7 +76,7 @@ def get_verificar_ejercicio_uc() -> VerificarEjercicioUseCase:
 
 
 def get_atencion_uc(
-    modelo: ModeloSAKT = Depends(get_modelo),
+    modelo: ModeloKTPort = Depends(get_modelo),
 ) -> ConsultarAtencionUseCase:
     return ConsultarAtencionUseCase(TrazabilidadRestAdapter(), modelo)
 
