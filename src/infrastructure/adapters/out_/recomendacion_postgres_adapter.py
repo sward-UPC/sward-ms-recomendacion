@@ -5,7 +5,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.entities.recomendacion import ItemRecomendado, Recomendacion
-from src.domain.ports.out_.recomendacion_repository_port import (
+from src.application.ports.out_.recomendacion_repository_port import (
     RecomendacionRepositoryPort,
 )
 from src.domain.value_objects.estado_recomendacion import EstadoRecomendacion

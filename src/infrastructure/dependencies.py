@@ -6,13 +6,14 @@ from src.application.use_cases.completar_recomendacion import (
     CompletarRecomendacionUseCase,
 )
 from src.application.use_cases.consultar_atencion import ConsultarAtencionUseCase
+from src.application.use_cases.consultar_modelo_info import ConsultarModeloInfoUseCase
 from src.application.use_cases.consultar_recomendacion import (
     ConsultarRecomendacionUseCase,
 )
 from src.application.use_cases.generar_material import GenerarMaterialUseCase
 from src.application.use_cases.generar_recomendacion import GenerarRecomendacionUseCase
 from src.application.use_cases.verificar_ejercicio import VerificarEjercicioUseCase
-from src.domain.ports.out_.modelo_kt_port import ModeloKTPort
+from src.application.ports.out_.modelo_kt_port import ModeloKTPort
 from src.infrastructure.adapters.out_.bedrock_llm_adapter import BedrockLlmAdapter
 from src.infrastructure.adapters.out_.cursos_rest_adapter import CursosRestAdapter
 from src.infrastructure.adapters.out_.eventbridge_adapter import EventBridgeAdapter
@@ -79,6 +80,14 @@ def get_atencion_uc(
     modelo: ModeloKTPort = Depends(get_modelo),
 ) -> ConsultarAtencionUseCase:
     return ConsultarAtencionUseCase(TrazabilidadRestAdapter(), modelo)
+
+
+def get_modelo_info_uc(
+    modelo: ModeloKTPort = Depends(get_modelo),
+) -> ConsultarModeloInfoUseCase:
+    return ConsultarModeloInfoUseCase(
+        modelo, es_mock=settings.environment == "development"
+    )
 
 
 def get_consultar_uc(

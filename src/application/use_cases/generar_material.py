@@ -4,10 +4,10 @@ import time
 from dataclasses import dataclass, field
 from uuid import UUID
 
-from src.domain.ports.out_.cursos_client_port import CursosClientPort
-from src.domain.ports.out_.llm_client_port import LlmClientPort
-from src.domain.ports.out_.trazabilidad_client_port import TrazabilidadClientPort
-from src.domain.ports.out_.youtube_client_port import YoutubeClientPort
+from src.application.ports.out_.cursos_client_port import CursosClientPort
+from src.application.ports.out_.llm_client_port import LlmClientPort
+from src.application.ports.out_.trazabilidad_client_port import TrazabilidadClientPort
+from src.application.ports.out_.youtube_client_port import YoutubeClientPort
 
 # Cache en memoria del material generado (clave: estudiante+curso). Generar cuesta
 # una llamada a Bedrock + una a YouTube y tarda unos segundos; el concepto débil

@@ -3,7 +3,7 @@ import logging
 
 import boto3
 
-from src.domain.ports.out_.llm_client_port import LlmClientPort
+from src.application.ports.out_.llm_client_port import LlmClientPort
 from src.infrastructure.config.settings import settings
 
 logger = logging.getLogger(__name__)
