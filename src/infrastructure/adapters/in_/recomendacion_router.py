@@ -24,7 +24,7 @@ from src.application.use_cases.verificar_ejercicio import (
     VerificarEjercicioCommand,
     VerificarEjercicioUseCase,
 )
-from src.domain.services.modelo_sakt import leer_info_modelo
+from src.domain.ports.out_.modelo_kt_port import ModeloKTPort
 from src.infrastructure.config.settings import settings
 from src.infrastructure.dependencies import (
     get_atencion_uc,
@@ -32,6 +32,7 @@ from src.infrastructure.dependencies import (
     get_consultar_uc,
     get_generar_uc,
     get_material_uc,
+    get_modelo,
     get_verificar_ejercicio_uc,
     require_jwt,
     require_service_key,
@@ -531,7 +532,10 @@ async def atencion(
     },
     include_in_schema=False,
 )
-async def model_info(_auth: None = Depends(require_service_key)):
+async def model_info(
+    _auth: None = Depends(require_service_key),
+    modelo: ModeloKTPort = Depends(get_modelo),
+):
     """Metadata REAL del modelo (fecha de entreno, hiperparámetros, AUC).
 
     Consumido s2s por ms-usuarios para el panel admin. La lee del artefacto en S3,
@@ -541,7 +545,7 @@ async def model_info(_auth: None = Depends(require_service_key)):
     """
     es_mock = settings.environment == "development"
     try:
-        info = leer_info_modelo()
+        info = modelo.leer_info()
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

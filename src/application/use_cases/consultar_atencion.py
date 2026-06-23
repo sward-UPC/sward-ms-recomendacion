@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from uuid import UUID
 
+from src.domain.ports.out_.modelo_kt_port import ModeloKTPort
 from src.domain.ports.out_.trazabilidad_client_port import TrazabilidadClientPort
-from src.domain.services.modelo_sakt import ModeloSAKT
 
 
 @dataclass
@@ -23,7 +23,7 @@ class AtencionResultado:
 class ConsultarAtencionUseCase:
     """Heatmap de atención: a qué interacciones pasadas atendió SAKT al predecir."""
 
-    def __init__(self, trazabilidad: TrazabilidadClientPort, modelo: ModeloSAKT):
+    def __init__(self, trazabilidad: TrazabilidadClientPort, modelo: ModeloKTPort):
         self._trazabilidad = trazabilidad
         self._modelo = modelo
 
