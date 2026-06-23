@@ -2,7 +2,7 @@ import json
 import re
 from dataclasses import dataclass
 
-from src.domain.ports.out_.llm_client_port import LlmClientPort
+from src.application.ports.out_.llm_client_port import LlmClientPort
 
 
 @dataclass

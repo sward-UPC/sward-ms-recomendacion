@@ -2,7 +2,7 @@ import logging
 
 import httpx
 
-from src.domain.ports.out_.youtube_client_port import YoutubeClientPort
+from src.application.ports.out_.youtube_client_port import YoutubeClientPort
 from src.infrastructure.config.settings import settings
 
 logger = logging.getLogger(__name__)
