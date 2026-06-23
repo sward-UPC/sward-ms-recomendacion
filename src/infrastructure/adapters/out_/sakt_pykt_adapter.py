@@ -7,6 +7,7 @@ from datetime import timezone
 
 from src.domain.entities.prediccion_kt import PrediccionKT
 from src.domain.entities.secuencia_interaccion import SecuenciaInteraccion
+from src.domain.ports.out_.modelo_kt_port import ModeloKTPort
 
 logger = logging.getLogger(__name__)
 
@@ -67,19 +68,23 @@ def leer_info_modelo() -> dict:
     }
 
 
-class ModeloSAKT:
-    """SAKT wrapper. Mock en development, real en production cargando desde S3."""
+class SaktPyktAdapter(ModeloKTPort):
+    """Adaptador real del SAKT: carga el checkpoint desde S3 con torch/pyKT e infiere.
 
-    def __init__(self, version: str = "v1.0", mock: bool = True):
+    Implementa ``ModeloKTPort`` moviendo aquí, sin cambios, toda la lógica de
+    inferencia y de captura de atención que vivía en el dominio. Si la carga del
+    artefacto falla, cae a una predicción mock (mismo comportamiento que antes).
+    """
+
+    def __init__(self, version: str = "v1.0"):
         self.version = version
-        self._mock = mock
+        self._mock = False
         self._model = None
         self._seq_len = 200
         # Mapa concepto(str)→índice entero del modelo. Vacío para modelos legacy
         # (assist2015, cuyos conceptos ya son ints); poblado para modelos Moodle.
         self._concept_index: dict[str, int] = {}
-        if not mock:
-            self._cargar_modelo()
+        self._cargar_modelo()
 
     def _cargar_modelo(self) -> None:
         try:
@@ -173,6 +178,9 @@ class ModeloSAKT:
         if self._mock or not secuencia.concepto_ids:
             return self._mock_prediccion(secuencia)
         return self._real_prediccion(secuencia)
+
+    def leer_info(self) -> dict:
+        return leer_info_modelo()
 
     def _mock_prediccion(self, secuencia: SecuenciaInteraccion) -> PrediccionKT:
         if not secuencia.respuestas_correctas:

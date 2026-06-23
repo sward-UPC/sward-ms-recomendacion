@@ -6,13 +6,12 @@ from src.domain.entities.recomendacion import ItemRecomendado, Recomendacion
 from src.domain.events.recomendacion_generada_event import RecomendacionGeneradaEvent
 from src.domain.ports.out_.cursos_client_port import CursosClientPort
 from src.domain.ports.out_.event_publisher_port import EventPublisherPort
+from src.domain.ports.out_.modelo_kt_port import ModeloKTPort
 from src.domain.ports.out_.recomendacion_repository_port import (
     RecomendacionRepositoryPort,
 )
 from src.domain.ports.out_.trazabilidad_client_port import TrazabilidadClientPort
 from src.domain.ports.out_.xai_client_port import XaiClientPort
-from src.domain.services.modelo_sakt import ModeloSAKT
-from src.infrastructure.config.settings import settings
 
 
 # Cache en memoria de la recomendación SAKT por estudiante+curso. Generar implica
@@ -65,7 +64,10 @@ class GenerarRecomendacionUseCase:
         xai: XaiClientPort,
         repo: RecomendacionRepositoryPort,
         event_publisher: EventPublisherPort,
-        modelo: ModeloSAKT,
+        modelo: ModeloKTPort,
+        cache_ttl_s: int = 1800,
+        max_conceptos_debiles: int = 3,
+        max_recomendaciones: int = 6,
     ):
         self._trazabilidad = trazabilidad
         self._cursos = cursos
@@ -73,6 +75,9 @@ class GenerarRecomendacionUseCase:
         self._repo = repo
         self._event_publisher = event_publisher
         self._modelo = modelo
+        self._cache_ttl_s = cache_ttl_s
+        self._max_conceptos_debiles = max_conceptos_debiles
+        self._max_recomendaciones = max_recomendaciones
 
     async def execute(self, cmd: GenerarRecomendacionCommand) -> Recomendacion:
         # Cache HIT: devuelve la recomendación sin re-inferir el SAKT ni llamar a
@@ -80,10 +85,7 @@ class GenerarRecomendacionUseCase:
         cache_key = (str(cmd.estudiante_id), str(cmd.curso_id))
         ahora = time.time()
         cacheada = _RECOMENDACION_CACHE.get(cache_key)
-        if (
-            cacheada is not None
-            and ahora - cacheada[0] < settings.recomendacion_cache_ttl_s
-        ):
+        if cacheada is not None and ahora - cacheada[0] < self._cache_ttl_s:
             print(f"[RECOMENDACION] cache HIT | {cache_key[0]}", flush=True)
             return cacheada[1]
 
@@ -108,12 +110,12 @@ class GenerarRecomendacionUseCase:
         # Top-K conceptos más débiles según el dominio estimado por sección. Antes
         # solo targeteábamos UNO → muy pocos items; ahora cubrimos varios conceptos
         # (estudiar + practicar por cada uno), tan rico como el motor del docente.
-        debiles = self._conceptos_mas_debiles(secuencia, settings.max_conceptos_debiles)
+        debiles = self._conceptos_mas_debiles(secuencia, self._max_conceptos_debiles)
 
         # Repartimos el cupo total entre los conceptos: con 1 concepto trae hasta
         # max_recomendaciones; con 3, ~2 cada uno. Así nunca queda escueto.
         por_concepto = (
-            max(2, -(-settings.max_recomendaciones // len(debiles))) if debiles else 0
+            max(2, -(-self._max_recomendaciones // len(debiles))) if debiles else 0
         )
 
         items: list[ItemRecomendado] = []
@@ -147,13 +149,13 @@ class GenerarRecomendacionUseCase:
                 prediccion.probabilidad_dominio,
                 None,
                 usados,
-                por_concepto=settings.max_recomendaciones,
+                por_concepto=self._max_recomendaciones,
                 pref_tipo=pref_tipo,
                 prefiere_practica=prefiere_practica,
             )
 
         # Límite global y renumeración del orden.
-        items = items[: settings.max_recomendaciones]
+        items = items[: self._max_recomendaciones]
         for i, it in enumerate(items):
             it.orden = i + 1
 
