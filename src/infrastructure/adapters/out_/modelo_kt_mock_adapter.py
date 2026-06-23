@@ -1,6 +1,6 @@
 from src.domain.entities.prediccion_kt import PrediccionKT
 from src.domain.entities.secuencia_interaccion import SecuenciaInteraccion
-from src.domain.ports.out_.modelo_kt_port import ModeloKTPort
+from src.application.ports.out_.modelo_kt_port import ModeloKTPort
 
 
 class ModeloKtMockAdapter(ModeloKTPort):

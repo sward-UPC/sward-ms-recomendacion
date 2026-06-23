@@ -2,7 +2,7 @@ import logging
 
 from sward_shared.events.domain_event import DomainEvent
 
-from src.domain.ports.out_.event_publisher_port import EventPublisherPort
+from src.application.ports.out_.event_publisher_port import EventPublisherPort
 from src.infrastructure.config.settings import settings
 
 logger = logging.getLogger(__name__)
