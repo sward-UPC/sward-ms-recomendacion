@@ -36,8 +36,10 @@ class Settings(BaseSettings):
     # task role, sin API key). El modelo debe estar habilitado en Bedrock.
     bedrock_model_id: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
     # El material tipado (quiz + lectura + práctica en un JSON) es grande; con pocos
-    # tokens se trunca y el JSON queda inválido → material no disponible. 4096 da aire.
-    bedrock_max_tokens: int = 4096
+    # tokens se trunca y el JSON queda inválido → material no disponible. Haiku 4.5
+    # admite respuestas largas; 8192 da margen para que el JSON cierre completo.
+    # (Además el parser repara truncaciones, pero mejor no depender de eso.)
+    bedrock_max_tokens: int = 8192
     # TTL del cache en memoria del material generado (segundos). Evita re-llamar a
     # Bedrock+YouTube en cada carga; el concepto débil cambia despacio. 6h por defecto.
     material_cache_ttl_s: int = 21600

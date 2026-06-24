@@ -310,15 +310,75 @@ class GenerarMaterialUseCase:
 
     @staticmethod
     def _extraer_json(texto: str) -> dict | None:
-        """Extrae el primer objeto JSON del texto (tolera ```json ... ``` o ruido)."""
+        """Extrae el objeto JSON del texto (tolera ```json ... ```, ruido y truncación).
+
+        Si la respuesta del LLM viene completa, la parsea directo. Si vino
+        truncada por ``max_tokens`` (JSON incompleto), intenta repararla cerrando
+        strings/llaves/corchetes abiertos para recuperar lo que sí se generó
+        (p.ej. quiz + lectura aunque la práctica se haya cortado).
+        """
+        # Caso feliz: hay un objeto JSON completo y válido.
         match = re.search(r"\{.*\}", texto, re.DOTALL)
-        if not match:
+        if match:
+            try:
+                data = json.loads(match.group(0))
+                if isinstance(data, dict):
+                    return data
+            except (ValueError, TypeError):
+                pass
+        # Salvataje de respuesta truncada.
+        start = texto.find("{")
+        if start == -1:
             return None
         try:
-            data = json.loads(match.group(0))
+            data = json.loads(
+                GenerarMaterialUseCase._reparar_json_truncado(texto[start:])
+            )
+            return data if isinstance(data, dict) else None
         except (ValueError, TypeError):
             return None
-        return data if isinstance(data, dict) else None
+
+    @staticmethod
+    def _reparar_json_truncado(s: str) -> str:
+        """Cierra strings/llaves/corchetes abiertos de un JSON truncado.
+
+        Recorre el texto respetando strings y escapes, lleva la pila de
+        contenedores abiertos, descarta un fragmento colgante al final (coma o
+        ``"clave":`` sin valor) y cierra todo lo pendiente. Best-effort.
+        """
+        out: list[str] = []
+        stack: list[str] = []
+        en_string = False
+        escape = False
+        for ch in s:
+            if escape:
+                out.append(ch)
+                escape = False
+                continue
+            if en_string and ch == "\\":
+                out.append(ch)
+                escape = True
+                continue
+            if ch == '"':
+                en_string = not en_string
+                out.append(ch)
+                continue
+            if not en_string:
+                if ch == "{":
+                    stack.append("}")
+                elif ch == "[":
+                    stack.append("]")
+                elif ch in "}]" and stack and stack[-1] == ch:
+                    stack.pop()
+            out.append(ch)
+        if en_string:
+            out.append('"')
+        texto = "".join(out).rstrip()
+        # Quita coma colgante o un par ``"clave":`` sin valor al final.
+        texto = re.sub(r",\s*$", "", texto)
+        texto = re.sub(r',?\s*"[^"]*"\s*:\s*$', "", texto)
+        texto = re.sub(r",\s*$", "", texto)
+        return texto + "".join(reversed(stack))
 
     @staticmethod
     def _concepto_mas_debil(
