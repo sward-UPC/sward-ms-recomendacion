@@ -19,6 +19,8 @@ import uuid
 import pytest
 
 from src.domain.entities.fidelidad_explicacion import (
+    CRITERIO_EXHAUSTIVIDAD,
+    CRITERIO_SUFICIENCIA,
     MOTIVO_DESACTIVADA,
     MOTIVO_POCAS_INTERACCIONES,
 )
@@ -183,42 +185,117 @@ def test_formato_derecha_no_pone_atencion_sobre_el_relleno(monkeypatch):
     assert sum(pesos) == pytest.approx(1.0, abs=1e-3)
 
 
-def test_verificacion_activa_mide_la_confianza(monkeypatch):
+def _config_verificacion(monkeypatch, criterio=CRITERIO_SUFICIENCIA, umbral=0.8):
     monkeypatch.setattr(settings, "xai_verificacion_activa", True)
+    monkeypatch.setattr(settings, "xai_criterio_fidelidad", criterio)
     monkeypatch.setattr(settings, "xai_min_interacciones", 5)
-    monkeypatch.setattr(settings, "xai_k_top", 2)
+    monkeypatch.setattr(settings, "xai_k_suficiencia", 1)
+    monkeypatch.setattr(settings, "xai_k_exhaustividad", 2)
     monkeypatch.setattr(settings, "xai_n_aleatorios", 10)
+    monkeypatch.setattr(settings, "xai_umbral_confianza", umbral)
+
+
+def test_verificacion_calcula_ambas_pruebas(monkeypatch):
+    _config_verificacion(monkeypatch)
     ad = _crear_adaptador(monkeypatch, {"val_auc": 0.7, "epoch": 1})
     f = ad.predecir_dominio(_secuencia()).fidelidad
 
-    assert f.n_aleatorios == 10
-    assert f.confianza == pytest.approx(f.supera_azar_en / 10)
+    assert f.suficiencia.criterio == CRITERIO_SUFICIENCIA and f.suficiencia.k == 1
+    assert f.exhaustividad.criterio == CRITERIO_EXHAUSTIVIDAD and f.exhaustividad.k == 2
+    assert f.suficiencia.n_aleatorios == f.exhaustividad.n_aleatorios == 10
     assert f.latencia_ms > 0
-    assert f.es_fiel == (f.confianza >= settings.xai_umbral_confianza)
+    assert f.es_fiel == f.es_suficiente
+
+
+def test_criterio_exhaustividad_decide_con_esa_prueba(monkeypatch):
+    _config_verificacion(monkeypatch, criterio=CRITERIO_EXHAUSTIVIDAD)
+    ad = _crear_adaptador(monkeypatch, {"val_auc": 0.7, "epoch": 1})
+    f = ad.predecir_dominio(_secuencia()).fidelidad
+    assert f.es_fiel == f.es_necesaria
+    assert f.confianza == f.exhaustividad.confianza
 
 
 def test_la_confianza_de_la_prediccion_es_la_medida(monkeypatch):
     # Reemplaza la constante 0.85 que no salía de ningún cálculo.
-    monkeypatch.setattr(settings, "xai_verificacion_activa", True)
-    monkeypatch.setattr(settings, "xai_min_interacciones", 5)
+    _config_verificacion(monkeypatch)
     ad = _crear_adaptador(monkeypatch, {"val_auc": 0.7, "epoch": 1})
     pred = ad.predecir_dominio(_secuencia())
     assert pred.confianza == pred.fidelidad.confianza
 
 
+def test_con_suficiencia_verificada_nombra_los_conceptos(monkeypatch):
+    # Umbral 0 fuerza que la prueba pase para ejercer el camino positivo.
+    _config_verificacion(monkeypatch, umbral=0.0)
+    ad = _crear_adaptador(monkeypatch, {"val_auc": 0.7, "epoch": 1})
+    f = ad.predecir_dominio(_secuencia()).fidelidad
+
+    assert f.es_suficiente
+    assert len(f.indices_suficientes) == 1
+    # Nombre del concepto, no el índice interno del modelo.
+    assert f.conceptos_suficientes[0] in CONCEPTOS
+    assert f.conceptos_suficientes[0] == CONCEPTOS[f.indices_suficientes[0]]
+
+
+def _modelo_indiferente(monkeypatch, ad):
+    """Hace que toda perturbación dé la misma probabilidad.
+
+    Así la atención nunca le gana estrictamente al azar y ambas pruebas fallan
+    de forma determinista.
+    """
+    monkeypatch.setattr(ad, "_inferir", lambda qs, rs, qry, borrados=None: [0.7] * len(qs))
+
+
+def test_sin_suficiencia_verificada_no_nombra_conceptos(monkeypatch):
+    _config_verificacion(monkeypatch)
+    ad = _crear_adaptador(monkeypatch, {"val_auc": 0.7, "epoch": 1})
+    _modelo_indiferente(monkeypatch, ad)
+    f = ad.predecir_dominio(_secuencia()).fidelidad
+    assert not f.es_suficiente and not f.es_fiel
+    assert f.suficiencia.supera_azar_en == 0
+    assert f.indices_suficientes == [] and f.conceptos_suficientes == []
+
+
+def test_contrafactual_solo_con_necesidad_verificada(monkeypatch):
+    _config_verificacion(monkeypatch, umbral=0.0)
+    ad = _crear_adaptador(monkeypatch, {"val_auc": 0.7, "epoch": 1})
+    f = ad.predecir_dominio(_secuencia()).fidelidad
+    assert f.es_necesaria  # umbral 0: pasa
+    assert f.contrafactual is not None
+    assert f.contrafactual.concepto in CONCEPTOS
+
+
+def test_sin_necesidad_verificada_no_hay_contrafactual(monkeypatch):
+    _config_verificacion(monkeypatch)
+    ad = _crear_adaptador(monkeypatch, {"val_auc": 0.7, "epoch": 1})
+    _modelo_indiferente(monkeypatch, ad)
+    f = ad.predecir_dominio(_secuencia()).fidelidad
+    assert not f.es_necesaria
+    assert f.contrafactual is None
+
+
 def test_verificacion_es_determinista_por_estudiante(monkeypatch):
     # Recargar la pantalla no puede hacer que el sistema cambie de opinión.
-    monkeypatch.setattr(settings, "xai_verificacion_activa", True)
-    monkeypatch.setattr(settings, "xai_min_interacciones", 5)
+    _config_verificacion(monkeypatch)
     ad = _crear_adaptador(monkeypatch, {"val_auc": 0.7, "epoch": 1})
     a = ad.predecir_dominio(_secuencia()).fidelidad
     b = ad.predecir_dominio(_secuencia()).fidelidad
-    assert (a.supera_azar_en, a.es_fiel) == (b.supera_azar_en, b.es_fiel)
+    assert (a.suficiencia.supera_azar_en, a.exhaustividad.supera_azar_en) == (
+        b.suficiencia.supera_azar_en,
+        b.exhaustividad.supera_azar_en,
+    )
+
+
+def test_criterio_invalido_hace_fallar_el_arranque():
+    from pydantic import ValidationError
+
+    from src.infrastructure.config.settings import Settings
+
+    with pytest.raises(ValidationError):
+        Settings(xai_criterio_fidelidad="causalidad")
 
 
 def test_pocas_interacciones_se_abstiene(monkeypatch):
-    monkeypatch.setattr(settings, "xai_verificacion_activa", True)
-    monkeypatch.setattr(settings, "xai_min_interacciones", 5)
+    _config_verificacion(monkeypatch)
     ad = _crear_adaptador(monkeypatch, {"val_auc": 0.7, "epoch": 1})
     pred = ad.predecir_dominio(_secuencia(CONCEPTOS[:4], RESPUESTAS[:4]))
     assert pred.fidelidad.motivo == MOTIVO_POCAS_INTERACCIONES

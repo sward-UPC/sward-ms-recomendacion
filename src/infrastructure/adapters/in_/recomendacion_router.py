@@ -26,6 +26,8 @@ from src.application.use_cases.verificar_ejercicio import (
 )
 from src.infrastructure.adapters.in_.schemas import (
     AtencionResponse,
+    ContrafactualResponse,
+    FidelidadResponse,
     CompletarRecomendacionResponse,
     GenerarMaterialRequest,
     GenerarRecomendacionRequest,
@@ -285,9 +287,44 @@ async def atencion(
     return AtencionResponse(
         probabilidad_dominio=res.probabilidad_dominio,
         puntos=[
-            PuntoAtencionResponse(concepto=p.concepto, acierto=p.acierto, peso=p.peso)
+            PuntoAtencionResponse(
+                concepto=p.concepto,
+                acierto=p.acierto,
+                peso=p.peso,
+                suficiente=p.suficiente,
+            )
             for p in res.puntos
         ],
+        fidelidad=_fidelidad_response(res.fidelidad),
+    )
+
+
+def _fidelidad_response(f) -> FidelidadResponse | None:
+    """Veredicto de fidelidad para el cliente; None si el modelo no verificó."""
+    if f is None:
+        return None
+    prueba = f.prueba_decisiva
+    cf = f.contrafactual
+    return FidelidadResponse(
+        criterio=f.criterio,
+        verificada=f.es_fiel,
+        motivo=f.motivo,
+        confianza=f.confianza,
+        umbral=f.umbral,
+        n_comparaciones=prueba.n_aleatorios if prueba is not None else 0,
+        conceptos_suficientes=list(f.conceptos_suficientes),
+        es_necesaria=f.es_necesaria,
+        contrafactual=(
+            ContrafactualResponse(
+                concepto=cf.concepto,
+                acierto_original=cf.acierto_original,
+                probabilidad_original=cf.probabilidad_original,
+                probabilidad_contrafactual=cf.probabilidad_contrafactual,
+            )
+            # Por debajo de un punto porcentual el contrafactual es ruido.
+            if cf is not None and cf.es_relevante
+            else None
+        ),
     )
 
 
