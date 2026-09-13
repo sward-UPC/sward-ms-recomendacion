@@ -9,6 +9,9 @@ import zlib
 from datetime import timezone
 
 from src.domain.entities.fidelidad_explicacion import (
+    CRITERIO_EXHAUSTIVIDAD,
+    CRITERIO_SUFICIENCIA,
+    CRITERIOS_VALIDOS,
     MOTIVO_DESACTIVADA,
     MOTIVO_ERROR,
     MOTIVO_FIEL,
@@ -16,6 +19,7 @@ from src.domain.entities.fidelidad_explicacion import (
     MOTIVO_POCAS_INTERACCIONES,
     Contrafactual,
     FidelidadExplicacion,
+    PruebaFidelidad,
 )
 from src.domain.entities.prediccion_kt import PrediccionKT
 from src.domain.entities.secuencia_interaccion import SecuenciaInteraccion
@@ -143,6 +147,7 @@ class SaktPyktAdapter(ModeloKTPort):
         # (assist2015, cuyos conceptos ya son ints); poblado para modelos Moodle.
         self._concept_index: dict[str, int] = {}
         self._formato = FORMATO_IZQUIERDA
+        self._inverso_conceptos: dict[int, str] | None = None
         self._cargar_modelo()
 
     def _cargar_modelo(self) -> None:
@@ -461,100 +466,154 @@ class SaktPyktAdapter(ModeloKTPort):
         prob_base: float,
         secuencia: SecuenciaInteraccion,
     ) -> FidelidadExplicacion:
-        """Contrasta el borrado del top-k de atención contra borrados al azar.
+        """Contrasta la atención contra el azar con las dos pruebas de ERASER.
 
-        Devuelve la fracción de sorteos aleatorios a los que la atención le gana
-        en comprehensiveness: el complemento de un p-valor de permutación de una
-        cola. 0.5 significa "no explica mejor que el azar", así que sirve
-        directamente como confianza, sin constantes de escala inventadas.
+        - Suficiencia: se conserva SOLO el top-k de atención; gana si la
+          predicción pierde menos confianza que conservando k al azar.
+        - Exhaustividad: se BORRA el top-k; gana si la predicción pierde más
+          confianza que borrando k al azar.
 
-        Todas las variantes van en UNA pasada por lotes, lo que mantiene el costo
-        dentro del presupuesto de 500 ms del RF-004-05.
+        Cada prueba reporta la fracción de sorteos que la atención gana. El
+        criterio configurado decide si se da un motivo; el contrafactual solo se
+        adjunta si pasa la exhaustividad, porque afirma necesidad.
+
+        Todas las variantes —dos pruebas, sus sorteos y el contrafactual— van en
+        UNA pasada por lotes, lo que mantiene el costo dentro de los 500 ms del
+        RF-004-05.
         """
         from src.infrastructure.config.settings import settings
 
         n_pasado = len(q)
+        criterio = settings.xai_criterio_fidelidad
+        if criterio not in CRITERIOS_VALIDOS:
+            raise ValueError(
+                f"XAI_CRITERIO_FIDELIDAD inválido: {criterio!r}. "
+                f"Valores posibles: {', '.join(CRITERIOS_VALIDOS)}"
+            )
 
         if not settings.xai_verificacion_activa:
-            return FidelidadExplicacion.no_verificada(MOTIVO_DESACTIVADA, n_pasado)
+            return FidelidadExplicacion.no_verificada(
+                MOTIVO_DESACTIVADA, n_pasado, criterio
+            )
 
-        k = settings.xai_k_top
+        k_suf = settings.xai_k_suficiencia
+        k_exh = settings.xai_k_exhaustividad
         n_aleatorios = settings.xai_n_aleatorios
 
-        # Tiene que sobrevivir al menos una interacción al borrado: si k cubriera
-        # todo el pasado, "borrar lo atendido" y "borrar todo" serían lo mismo.
-        if n_pasado < max(settings.xai_min_interacciones, k + 1):
+        # Tiene que quedar al menos una interacción fuera del top-k en cada prueba:
+        # si k cubriera todo el pasado, perturbar «lo atendido» y perturbar «todo»
+        # serían lo mismo y no habría contra qué comparar.
+        if n_pasado < max(settings.xai_min_interacciones, k_suf + 1, k_exh + 1):
             return FidelidadExplicacion.no_verificada(
-                MOTIVO_POCAS_INTERACCIONES, n_pasado
+                MOTIVO_POCAS_INTERACCIONES, n_pasado, criterio
             )
 
         inicio = time.perf_counter()
         try:
             orden = sorted(range(n_pasado), key=lambda i: pesos[i], reverse=True)
             rng = self._rng_estable(secuencia, n_pasado)
+            todas = set(range(n_pasado))
 
-            # Fila 0: top-k de atención. Filas 1..n: k al azar (el control).
-            conjuntos = [set(orden[:k])]
-            conjuntos += [set(rng.sample(range(n_pasado), k)) for _ in range(n_aleatorios)]
+            # Conjuntos a BORRAR, fila por fila, en este orden:
+            #   exhaustividad: top-k, luego n sorteos
+            #   suficiencia:   todo menos top-k, luego todo menos k al azar
+            borrar_exh = [set(orden[:k_exh])] + [
+                set(rng.sample(range(n_pasado), k_exh)) for _ in range(n_aleatorios)
+            ]
+            conservar_suf = [set(orden[:k_suf])] + [
+                set(rng.sample(range(n_pasado), k_suf)) for _ in range(n_aleatorios)
+            ]
+            borrar_suf = [todas - c for c in conservar_suf]
 
-            filas_q, filas_r = [], []
-            for indices in conjuntos:
+            filas_q, filas_r, borrados = [], [], []
+            for indices in borrar_exh + borrar_suf:
                 fq, fr = list(q), list(r)
                 for i in indices:
                     fq[i] = PAD_TOKEN
                     fr[i] = PAD_TOKEN
                 filas_q.append(fq)
                 filas_r.append(fr)
+                borrados.append(indices)
 
             # Última fila: el contrafactual. No borra: invierte la respuesta de la
-            # interacción más atendida ("¿y si esto hubiera salido al revés?").
+            # interacción más atendida («¿y si esto hubiera salido al revés?»).
             idx_top = orden[0]
             r_cf = list(r)
             r_cf[idx_top] = 1 - r_cf[idx_top]
             filas_q.append(list(q))
             filas_r.append(r_cf)
-            conjuntos.append(set())
+            borrados.append(set())
 
-            probs = self._inferir(filas_q, filas_r, qry, conjuntos)
+            probs = self._inferir(filas_q, filas_r, qry, borrados)
 
             conf_base = _confianza_binaria(prob_base)
-            # Comprehensiveness = confianza que se pierde al borrar. Si borrar lo
-            # atendido derrumba la predicción, la atención sí la sostenía.
-            comp_attn = conf_base - _confianza_binaria(probs[0])
-            comps_rand = [
-                conf_base - _confianza_binaria(p) for p in probs[1 : 1 + n_aleatorios]
-            ]
+            perdidas = [conf_base - _confianza_binaria(p) for p in probs]
+            bloque = 1 + n_aleatorios
+            p_exh, p_suf = perdidas[:bloque], perdidas[bloque : 2 * bloque]
 
-            supera = sum(1 for c in comps_rand if comp_attn > c)
-            confianza = supera / n_aleatorios
-            es_fiel = confianza >= settings.xai_umbral_confianza
-
-            contrafactual = Contrafactual(
-                indice=idx_top,
-                concepto=str(q[idx_top]),
-                acierto_original=bool(r[idx_top]),
-                probabilidad_original=min(max(prob_base, 0.0), 1.0),
-                probabilidad_contrafactual=min(max(float(probs[-1]), 0.0), 1.0),
+            exhaustividad = PruebaFidelidad(
+                criterio=CRITERIO_EXHAUSTIVIDAD,
+                k=k_exh,
+                perdida_atencion=round(p_exh[0], 4),
+                perdida_azar_media=round(sum(p_exh[1:]) / n_aleatorios, 4),
+                n_aleatorios=n_aleatorios,
+                # Borrar lo atendido debe doler MÁS que borrar al azar.
+                supera_azar_en=sum(1 for x in p_exh[1:] if p_exh[0] > x),
+            )
+            suficiencia = PruebaFidelidad(
+                criterio=CRITERIO_SUFICIENCIA,
+                k=k_suf,
+                perdida_atencion=round(p_suf[0], 4),
+                perdida_azar_media=round(sum(p_suf[1:]) / n_aleatorios, 4),
+                n_aleatorios=n_aleatorios,
+                # Conservar solo lo atendido debe doler MENOS que conservar al azar.
+                supera_azar_en=sum(1 for x in p_suf[1:] if p_suf[0] < x),
             )
 
+            umbral = settings.xai_umbral_confianza
+            es_suficiente = suficiencia.confianza >= umbral
+            es_necesaria = exhaustividad.confianza >= umbral
+            es_fiel = es_suficiente if criterio == CRITERIO_SUFICIENCIA else es_necesaria
+
+            nombre = self._nombre_concepto
+            top_suf = orden[:k_suf]
+
             return FidelidadExplicacion(
-                k=k,
+                criterio=criterio,
                 n_pasado=n_pasado,
-                comprehensiveness_atencion=round(comp_attn, 4),
-                comprehensiveness_azar_media=round(
-                    sum(comps_rand) / len(comps_rand), 4
+                umbral=umbral,
+                suficiencia=suficiencia,
+                exhaustividad=exhaustividad,
+                indices_suficientes=list(top_suf) if es_suficiente else [],
+                conceptos_suficientes=(
+                    [nombre(q[i]) for i in top_suf] if es_suficiente else []
                 ),
-                n_aleatorios=n_aleatorios,
-                supera_azar_en=supera,
-                confianza=confianza,
-                umbral=settings.xai_umbral_confianza,
-                es_fiel=es_fiel,
                 motivo=MOTIVO_FIEL if es_fiel else MOTIVO_NO_SUPERA_AZAR,
                 latencia_ms=round((time.perf_counter() - inicio) * 1000, 2),
-                contrafactual=contrafactual if es_fiel else None,
+                contrafactual=(
+                    Contrafactual(
+                        indice=idx_top,
+                        concepto=nombre(q[idx_top]),
+                        acierto_original=bool(r[idx_top]),
+                        probabilidad_original=min(max(prob_base, 0.0), 1.0),
+                        probabilidad_contrafactual=min(max(float(probs[-1]), 0.0), 1.0),
+                    )
+                    if es_necesaria
+                    else None
+                ),
             )
         except Exception as e:
             # Que falle la verificación no debe tumbar la recomendación: se
             # devuelve sin motivo, que es el lado seguro.
             logger.warning("Verificación de fidelidad falló: %s", e)
-            return FidelidadExplicacion.no_verificada(MOTIVO_ERROR, n_pasado)
+            return FidelidadExplicacion.no_verificada(MOTIVO_ERROR, n_pasado, criterio)
+
+    def _nombre_concepto(self, indice: int) -> str:
+        """Nombre legible del concepto a partir del índice del modelo.
+
+        Los modelos Moodle traen concept_index (nombre → índice). Los legacy de
+        ASSISTments usan enteros como concepto, así que el índice ya es el nombre.
+        """
+        if self._inverso_conceptos is None:
+            self._inverso_conceptos = {v: k for k, v in self._concept_index.items()}
+        return str(self._inverso_conceptos.get(indice, indice))
