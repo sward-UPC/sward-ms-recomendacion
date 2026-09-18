@@ -8,7 +8,7 @@ tragaba en silencio: ninguna explicación llegaba nunca a ms-xai.
 
 import logging
 from unittest.mock import AsyncMock, MagicMock
-from uuid import uuid4
+from uuid import UUID, uuid4, uuid5
 
 import httpx
 import pytest
@@ -61,7 +61,10 @@ def test_alineacion_igual_que_el_heatmap():
 def test_sin_id_de_trazabilidad_usa_referencia_posicional():
     sec = _secuencia(ids=("i1", "", "i3"))
     pesos = construir_pesos([0.2, 0.5, 0.3], sec)
-    assert pesos[1]["interaccion_referencia_id"] == f"{sec.id}:1"
+    ref = pesos[1]["interaccion_referencia_id"]
+    # ms-xai valida el campo como UUID: la referencia de respaldo debe serlo.
+    assert UUID(ref) == uuid5(sec.id, "1")
+    assert construir_pesos([0.2, 0.5, 0.3], sec)[1]["interaccion_referencia_id"] == ref
 
 
 # ---------------------------------------------------------------------------

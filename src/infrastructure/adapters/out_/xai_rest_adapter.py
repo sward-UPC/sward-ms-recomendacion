@@ -1,5 +1,5 @@
 import logging
-from uuid import UUID
+from uuid import UUID, uuid5
 
 import httpx
 
@@ -21,12 +21,15 @@ def construir_pesos(
     interaccion pasada i, y zip recorta al menor.
 
     Si trazabilidad no entrego el id de una interaccion, se usa una referencia
-    posicional estable (`<secuencia>:<i>`) para no perder el peso.
+    posicional estable: un uuid5 de la secuencia y la posicion. Tiene que ser un
+    UUID porque ms-xai valida el campo como tal; una cadena cualquiera seria 422.
     """
     ids = secuencia.interaccion_ids
     return [
         {
-            "interaccion_referencia_id": (ids[i] if i < len(ids) and ids[i] else f"{secuencia.id}:{i}"),
+            "interaccion_referencia_id": (
+                ids[i] if i < len(ids) and ids[i] else str(uuid5(secuencia.id, str(i)))
+            ),
             "peso": round(float(peso), 6),
             "concepto": str(concepto),
         }
