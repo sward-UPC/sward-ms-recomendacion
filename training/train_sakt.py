@@ -191,6 +191,9 @@ def main():
             "n_estudiantes": len(seqs),
             "n_muestras": n,
             "trained_at": datetime.now(timezone.utc).isoformat(),
+            # Contrato de entrada con que se entrenó: relleno a la izquierda, sin
+            # máscara de atención. El adaptador lo lee para servir el modelo igual.
+            "formato_entrada": "relleno_izquierda",
             "concept_index": concept_index,
             "model_state_dict": model.state_dict(),
         },
