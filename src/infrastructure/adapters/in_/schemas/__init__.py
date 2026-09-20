@@ -6,7 +6,12 @@ aquí para que las rutas importen desde `...adapters.in_.schemas` sin conocer el
 submódulo.
 """
 
-from .atencion import AtencionResponse, PuntoAtencionResponse
+from .atencion import (
+    AtencionResponse,
+    ContrafactualResponse,
+    FidelidadResponse,
+    PuntoAtencionResponse,
+)
 from .ejercicio import VerificacionResponse, VerificarEjercicioRequest
 from .material import GenerarMaterialRequest, MaterialResponse
 from .modelo import ModelInfoResponse
@@ -30,5 +35,7 @@ __all__ = [
     "VerificacionResponse",
     "PuntoAtencionResponse",
     "AtencionResponse",
+    "FidelidadResponse",
+    "ContrafactualResponse",
     "ModelInfoResponse",
 ]
