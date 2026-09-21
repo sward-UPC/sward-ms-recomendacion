@@ -1,16 +1,19 @@
 name: Entrenar modelo SAKT
 
 # Auto-entrenamiento del modelo SAKT con las interacciones reales.
-# Corre semanal (lunes) y a demanda. Entrena en CPU (modelo chico), sube el
+# Solo a demanda. Entrena en CPU (modelo chico), sube el
 # checkpoint a S3 y fuerza el redeploy de ms-recomendacion para recargar.
 #
-# En modo dev la infra se APAGA cada noche (stop.yml: RDS + ECS a 0), así que el
-# job programado encontraba la API caída (503). Por eso, en corridas PROGRAMADAS,
-# este workflow enciende lo mínimo (RDS + trazabilidad), entrena y vuelve a
-# apagar. En corridas manuales asume que ya levantaste la infra.
+# Desde el 20/09/2026 no corre solo. La corrida semanal entraba con credenciales
+# de AWS del integrante anterior, a una infraestructura que ya no responde, y
+# fallaba todos los lunes desde agosto. Se vuelve a programar cuando haya
+# credenciales propias y la infraestructura levantada.
+#
+# Los pasos condicionados a `schedule` (encender y apagar RDS y ECS, que en modo
+# dev se apagan cada noche con stop.yml) se conservan para ese momento: hoy no se
+# ejecutan, porque solo quedan las corridas manuales, que asumen la infra ya
+# levantada.
 on:
-  schedule:
-    - cron: '0 6 * * 1' # lunes 06:00 UTC
   workflow_dispatch: {}
 
 env:
