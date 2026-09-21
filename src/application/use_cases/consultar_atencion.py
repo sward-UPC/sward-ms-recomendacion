@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from src.application.ports.out_.modelo_kt_port import ModeloKTPort
+from src.domain.entities.fidelidad_explicacion import FidelidadExplicacion
 from src.application.ports.out_.trazabilidad_client_port import TrazabilidadClientPort
 
 
@@ -12,12 +13,16 @@ class PuntoAtencion:
     concepto: str
     acierto: bool
     peso: float
+    # Si esta interacción está entre las que la verificación comprobó que bastan
+    # para llegar a la predicción. Solo puede ser True con suficiencia verificada.
+    suficiente: bool = False
 
 
 @dataclass
 class AtencionResultado:
     probabilidad_dominio: float
     puntos: list[PuntoAtencion]
+    fidelidad: FidelidadExplicacion | None = None
 
 
 class ConsultarAtencionUseCase:
@@ -30,15 +35,27 @@ class ConsultarAtencionUseCase:
     async def execute(self, estudiante_id: UUID, curso_id: UUID) -> AtencionResultado:
         secuencia = await self._trazabilidad.obtener_secuencia(estudiante_id, curso_id)
         pred = self._modelo.predecir_dominio(secuencia)
+        suficientes = (
+            set(pred.fidelidad.indices_suficientes) if pred.fidelidad else set()
+        )
         # pesos_atencion alinea con las interacciones pasadas; zip recorta al menor.
         puntos = [
-            PuntoAtencion(concepto=str(c), acierto=bool(r), peso=round(float(w), 4))
-            for c, r, w in zip(
-                secuencia.concepto_ids,
-                secuencia.respuestas_correctas,
-                pred.pesos_atencion,
+            PuntoAtencion(
+                concepto=str(c),
+                acierto=bool(r),
+                peso=round(float(w), 4),
+                suficiente=i in suficientes,
+            )
+            for i, (c, r, w) in enumerate(
+                zip(
+                    secuencia.concepto_ids,
+                    secuencia.respuestas_correctas,
+                    pred.pesos_atencion,
+                )
             )
         ]
         return AtencionResultado(
-            probabilidad_dominio=pred.probabilidad_dominio, puntos=puntos
+            probabilidad_dominio=pred.probabilidad_dominio,
+            puntos=puntos,
+            fidelidad=pred.fidelidad,
         )

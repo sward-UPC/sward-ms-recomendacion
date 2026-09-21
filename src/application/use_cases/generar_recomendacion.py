@@ -1,3 +1,4 @@
+import logging
 import time
 from dataclasses import dataclass
 from uuid import UUID
@@ -13,11 +14,25 @@ from src.application.ports.out_.recomendacion_repository_port import (
 from src.application.ports.out_.trazabilidad_client_port import TrazabilidadClientPort
 from src.application.ports.out_.xai_client_port import XaiClientPort
 
+logger = logging.getLogger(__name__)
+
 
 # Cache en memoria de la recomendación SAKT por estudiante+curso. Generar implica
 # inferencia del modelo + varias llamadas a cursos; el resultado cambia despacio, así
 # que lo cacheamos con TTL para que recargar la página sea instantáneo.
-_RECOMENDACION_CACHE: dict[tuple[str, str], tuple[float, "Recomendacion"]] = {}
+#
+# La entrada guarda tambien la huella del historial con que se calculo: si llego
+# una interaccion nueva, la recomendacion cacheada ya no corresponde y se recalcula.
+# Sin eso, marcar un recurso como completado devolvia la misma lista durante 30
+# minutos, y el alumno veia «tus recomendaciones siguen igual» por la cache, no
+# por el modelo.
+_RECOMENDACION_CACHE: dict[tuple[str, str], tuple[float, tuple, "Recomendacion"]] = {}
+
+
+def _huella(secuencia) -> tuple:
+    """Identifica el estado del historial: cuantas interacciones y cual fue la ultima."""
+    ids = getattr(secuencia, "interaccion_ids", None) or []
+    return (len(secuencia.concepto_ids), ids[-1] if ids else None)
 
 
 # Preferencia de formato: clasifica tipos (Moodle y SWARD) en práctica vs estudio,
@@ -81,17 +96,22 @@ class GenerarRecomendacionUseCase:
 
     async def execute(self, cmd: GenerarRecomendacionCommand) -> Recomendacion:
         # Cache HIT: devuelve la recomendación sin re-inferir el SAKT ni llamar a
-        # cursos (recargar la página es instantáneo).
+        # cursos, siempre que el historial no haya cambiado. Leer la secuencia es
+        # una sola llamada; lo caro, la inferencia y el catálogo, sigue cacheado.
         cache_key = (str(cmd.estudiante_id), str(cmd.curso_id))
         ahora = time.time()
-        cacheada = _RECOMENDACION_CACHE.get(cache_key)
-        if cacheada is not None and ahora - cacheada[0] < self._cache_ttl_s:
-            print(f"[RECOMENDACION] cache HIT | {cache_key[0]}", flush=True)
-            return cacheada[1]
-
         secuencia = await self._trazabilidad.obtener_secuencia(
             cmd.estudiante_id, cmd.curso_id
         )
+        huella = _huella(secuencia)
+        cacheada = _RECOMENDACION_CACHE.get(cache_key)
+        if (
+            cacheada is not None
+            and ahora - cacheada[0] < self._cache_ttl_s
+            and cacheada[1] == huella
+        ):
+            print(f"[RECOMENDACION] cache HIT | {cache_key[0]}", flush=True)
+            return cacheada[2]
         prediccion = self._modelo.predecir_dominio(secuencia)
 
         # Preferencia de formato (best-effort): en qué tipo de recurso rinde/consume
@@ -165,9 +185,13 @@ class GenerarRecomendacionUseCase:
         guardada = await self._repo.save(rec)
 
         try:
-            await self._xai.generar_explicacion(guardada.id, prediccion.pesos_atencion)
-        except Exception:
-            pass  # XAI falla de forma no bloqueante
+            await self._xai.generar_explicacion(
+                guardada.id, prediccion.pesos_atencion, secuencia
+            )
+        except Exception as e:
+            # No bloquea la recomendacion, pero tampoco puede ser silencioso: asi
+            # fue como el contrato roto con ms-xai paso inadvertido.
+            logger.warning("No se pudo registrar la explicacion en ms-xai: %s", e)
 
         self._event_publisher.publish(
             RecomendacionGeneradaEvent(
@@ -178,7 +202,7 @@ class GenerarRecomendacionUseCase:
         )
         # Solo cacheamos si hubo items (no cacheamos resultados vacíos por falta de data).
         if guardada.items:
-            _RECOMENDACION_CACHE[cache_key] = (ahora, guardada)
+            _RECOMENDACION_CACHE[cache_key] = (ahora, huella, guardada)
         return guardada
 
     @staticmethod
