@@ -9,6 +9,9 @@ class SecuenciaInteraccion:
     curso_id: UUID = field(default_factory=uuid4)
     concepto_ids: list[str] = field(default_factory=list)
     respuestas_correctas: list[bool] = field(default_factory=list)
+    # Id de trazabilidad de cada interaccion, alineado con concepto_ids. ms-xai lo
+    # exige para anclar cada peso de atencion a la interaccion que lo recibio.
+    interaccion_ids: list[str] = field(default_factory=list)
 
     def to_vectors(self) -> tuple[list[int], list[int]]:
         concepto_map = {c: i for i, c in enumerate(sorted(set(self.concepto_ids)))}

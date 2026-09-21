@@ -36,6 +36,7 @@ class TrazabilidadRestAdapter(TrazabilidadClientPort):
             curso_id=curso_id,
             concepto_ids=[str(i["concept_id"]) for i in con_concepto],
             respuestas_correctas=[bool(i.get("is_correct")) for i in con_concepto],
+            interaccion_ids=[str(i.get("id") or "") for i in con_concepto],
         )
 
     async def obtener_preferencias(

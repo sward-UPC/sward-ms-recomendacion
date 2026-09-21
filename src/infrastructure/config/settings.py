@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -21,6 +23,9 @@ class Settings(BaseSettings):
     # Modelo SAKT entrenado sobre conceptos de Moodle (secciones). El checkpoint
     # trae n_skills + concept_index, así que el servicio se adapta solo.
     sakt_model_s3_key: str = "sakt/moodle/model.pth"
+    # Formato de entrada del checkpoint. Vacío = se lee del propio checkpoint
+    # (recomendado). Solo para forzarlo: "relleno_izquierda" | "relleno_derecha".
+    sakt_formato_entrada: str = ""
     trazabilidad_service_url: str = "http://localhost:8003"
     cursos_service_url: str = "http://localhost:8004"
     xai_service_url: str = "http://localhost:8006"
@@ -49,6 +54,38 @@ class Settings(BaseSettings):
     # Clave de la YouTube Data API v3 para adjuntar un video real al material.
     # Best-effort: si está vacía, el material se genera sin el recurso de video.
     youtube_api_key: str = ""
+    # ── Verificación de fidelidad de la explicación (ERASER en línea) ──────
+    # Contrasta, por cada predicción, la atención contra perturbaciones al azar.
+    # Si no la supera, el sistema se abstiene de dar un motivo en lugar de
+    # inventarlo. Apagada, el comportamiento es el anterior (condición de control).
+    xai_verificacion_activa: bool = True
+    # Qué prueba decide si se muestra un motivo:
+    #  - "suficiencia": conservar solo lo más atendido mantiene la predicción
+    #    mejor que conservar algo al azar. Con el formato de entrada correcto es
+    #    la propiedad que la atención SÍ cumple (k=1: p < 0.0001, r = +0.44).
+    #  - "exhaustividad": quitar lo más atendido la cambia más que quitar algo al
+    #    azar. La atención NO la cumple de forma sistemática (k=3: p = 0.65).
+    # Ambas se calculan siempre; el contrafactual solo se ofrece si pasa la
+    # exhaustividad, porque es una afirmación de necesidad.
+    # Literal: un valor inválido hace fallar el arranque, en vez de degradar
+    # en silencio a predicciones mock.
+    xai_criterio_fidelidad: Literal["suficiencia", "exhaustividad"] = "suficiencia"
+    # k de cada prueba: el valor con mayor tamaño de efecto en la evaluación
+    # offline corregida para suficiencia, y el habitual de ERASER para exhaustividad.
+    xai_k_suficiencia: int = 1
+    xai_k_exhaustividad: int = 3
+    # Sorteos aleatorios de contraste. Es el denominador de la confianza, así que
+    # fija su resolución: con 20, la confianza avanza de 0.05 en 0.05. Todos se
+    # resuelven en UNA sola pasada por lotes, así que subirlo casi no cuesta.
+    xai_n_aleatorios: int = 20
+    # Fracción de sorteos que la atención debe ganar para que una prueba pase.
+    # 0.8 equivale a un contraste de permutación de una cola con p ≤ 0.2.
+    xai_umbral_confianza: float = 0.8
+    # Por debajo de esto la secuencia es demasiado corta para que la atención
+    # signifique algo: es justo el régimen donde la medición offline cayó por
+    # debajo del azar.
+    xai_min_interacciones: int = 5
+
     # Orígenes permitidos para CORS (configurables por entorno).
     cors_allowed_origins: list[str] = ["http://localhost:5173"]
 
