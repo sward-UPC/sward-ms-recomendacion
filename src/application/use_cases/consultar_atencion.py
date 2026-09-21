@@ -35,7 +35,9 @@ class ConsultarAtencionUseCase:
     async def execute(self, estudiante_id: UUID, curso_id: UUID) -> AtencionResultado:
         secuencia = await self._trazabilidad.obtener_secuencia(estudiante_id, curso_id)
         pred = self._modelo.predecir_dominio(secuencia)
-        suficientes = set(pred.fidelidad.indices_suficientes) if pred.fidelidad else set()
+        suficientes = (
+            set(pred.fidelidad.indices_suficientes) if pred.fidelidad else set()
+        )
         # pesos_atencion alinea con las interacciones pasadas; zip recorta al menor.
         puntos = [
             PuntoAtencion(
