@@ -120,7 +120,7 @@ producción). Es decir, el feature está listo del lado del modelo y queda
 El loader actual mapea concepto→índice así (resumen de `_real_prediccion`):
 
 ```python
-idx = self._concept_index.get(str(concepto))   # modelo Moodle
+idx = self._concept_index.get(str(concepto))  # modelo Moodle
 ```
 
 Para la variante format-aware harían falta dos cambios:
