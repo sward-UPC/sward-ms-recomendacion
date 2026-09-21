@@ -195,7 +195,9 @@ class SaktPyktAdapter(ModeloKTPort):
             # de pyKT los descarta) y aceptar máscara de relleno, igual que el
             # forward de sward-model-training/train.py. Con key_padding_mask=None
             # es idéntico al stock, así que el formato histórico no cambia.
-            def _blocks_forward_capture(self, q=None, k=None, v=None, key_padding_mask=None):
+            def _blocks_forward_capture(
+                self, q=None, k=None, v=None, key_padding_mask=None
+            ):
 
                 q, k, v = q.permute(1, 0, 2), k.permute(1, 0, 2), v.permute(1, 0, 2)
                 causal_mask = ut_mask(seq_len=k.shape[0])
@@ -286,8 +288,6 @@ class SaktPyktAdapter(ModeloKTPort):
 
     def _real_prediccion(self, secuencia: SecuenciaInteraccion) -> PrediccionKT:
         try:
-            import torch
-
             # Mapear conceptos→índices enteros que entiende el modelo:
             #  - con concept_index (modelo Moodle): traduce la sección; omite desconocidos.
             #  - sin índice (legacy assist2015): los conceptos ya son string-ints.
@@ -573,7 +573,9 @@ class SaktPyktAdapter(ModeloKTPort):
             umbral = settings.xai_umbral_confianza
             es_suficiente = suficiencia.confianza >= umbral
             es_necesaria = exhaustividad.confianza >= umbral
-            es_fiel = es_suficiente if criterio == CRITERIO_SUFICIENCIA else es_necesaria
+            es_fiel = (
+                es_suficiente if criterio == CRITERIO_SUFICIENCIA else es_necesaria
+            )
 
             nombre = self._nombre_concepto
             top_suf = orden[:k_suf]

@@ -24,7 +24,9 @@ from src.infrastructure.adapters.in_.recomendacion_router import _fidelidad_resp
 
 
 def _prueba(criterio, supera, k=1):
-    return PruebaFidelidad(criterio=criterio, k=k, n_aleatorios=20, supera_azar_en=supera)
+    return PruebaFidelidad(
+        criterio=criterio, k=k, n_aleatorios=20, supera_azar_en=supera
+    )
 
 
 def _suficiente_no_necesaria():
@@ -52,7 +54,9 @@ async def _consultar(fidelidad):
         pesos_atencion=[0.2, 0.5, 0.3],
         fidelidad=fidelidad,
     )
-    return await ConsultarAtencionUseCase(trazabilidad, modelo).execute(uuid4(), uuid4())
+    return await ConsultarAtencionUseCase(trazabilidad, modelo).execute(
+        uuid4(), uuid4()
+    )
 
 
 async def test_marca_solo_las_interacciones_verificadas_como_suficientes():

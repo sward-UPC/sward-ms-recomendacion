@@ -33,7 +33,9 @@ def construir_pesos(
             "peso": round(float(peso), 6),
             "concepto": str(concepto),
         }
-        for i, (peso, concepto) in enumerate(zip(pesos_atencion, secuencia.concepto_ids))
+        for i, (peso, concepto) in enumerate(
+            zip(pesos_atencion, secuencia.concepto_ids)
+        )
     ]
 
 
@@ -55,7 +57,10 @@ class XaiRestAdapter(XaiClientPort):
         async with httpx.AsyncClient(timeout=5.0) as client:
             r = await client.post(
                 f"{settings.xai_service_url}/xai/explain",
-                json={"recomendacion_id": str(recomendacion_id), "pesos_atencion": pesos},
+                json={
+                    "recomendacion_id": str(recomendacion_id),
+                    "pesos_atencion": pesos,
+                },
                 headers=headers,
             )
         # ms-xai responde 201 Created. Tratar solo el 200 como exito descartaba

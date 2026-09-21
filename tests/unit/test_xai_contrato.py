@@ -21,7 +21,10 @@ from src.application.use_cases.generar_recomendacion import (
 from src.domain.entities.secuencia_interaccion import SecuenciaInteraccion
 from src.infrastructure.adapters.out_ import xai_rest_adapter
 from src.infrastructure.adapters.out_.modelo_kt_mock_adapter import ModeloKtMockAdapter
-from src.infrastructure.adapters.out_.xai_rest_adapter import XaiRestAdapter, construir_pesos
+from src.infrastructure.adapters.out_.xai_rest_adapter import (
+    XaiRestAdapter,
+    construir_pesos,
+)
 
 
 def _secuencia(ids=("i1", "i2", "i3")):
@@ -99,9 +102,13 @@ def _cliente_que_responde(estado, cuerpo, capturado):
 async def test_201_es_exito(monkeypatch):
     capturado = {}
     monkeypatch.setattr(xai_rest_adapter.settings, "environment", "local")
-    monkeypatch.setattr(httpx, "AsyncClient", _cliente_que_responde(201, {"id": "x"}, capturado))
+    monkeypatch.setattr(
+        httpx, "AsyncClient", _cliente_que_responde(201, {"id": "x"}, capturado)
+    )
 
-    r = await XaiRestAdapter().generar_explicacion(uuid4(), [0.2, 0.5, 0.3], _secuencia())
+    r = await XaiRestAdapter().generar_explicacion(
+        uuid4(), [0.2, 0.5, 0.3], _secuencia()
+    )
 
     assert r == {"id": "x"}
     assert capturado["url"].endswith("/xai/explain")
@@ -116,7 +123,9 @@ async def test_un_rechazo_se_registra_en_el_log(monkeypatch, caplog):
     )
 
     with caplog.at_level(logging.WARNING):
-        r = await XaiRestAdapter().generar_explicacion(uuid4(), [0.5, 0.5], _secuencia())
+        r = await XaiRestAdapter().generar_explicacion(
+            uuid4(), [0.5, 0.5], _secuencia()
+        )
 
     assert r == {}
     assert "422" in caplog.text
@@ -153,7 +162,9 @@ async def test_una_interaccion_nueva_invalida_la_cache(monkeypatch):
     primera = await uc.execute(cmd)
     assert (await uc.execute(cmd)) is primera  # mismo historial: cache
 
-    trazabilidad.obtener_secuencia.return_value = _secuencia(ids=("i1", "i2", "i3", "i4"))
+    trazabilidad.obtener_secuencia.return_value = _secuencia(
+        ids=("i1", "i2", "i3", "i4")
+    )
     trazabilidad.obtener_secuencia.return_value.concepto_ids.append("Pilas")
     trazabilidad.obtener_secuencia.return_value.respuestas_correctas.append(True)
 

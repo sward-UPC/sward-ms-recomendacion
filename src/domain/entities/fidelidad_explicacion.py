@@ -163,13 +163,21 @@ class FidelidadExplicacion:
             ("exhaustividad", self.exhaustividad, CRITERIO_EXHAUSTIVIDAD),
         ):
             if prueba is not None and prueba.criterio != esperado:
-                raise ValueError(f"La prueba de {nombre} trae criterio {prueba.criterio!r}.")
+                raise ValueError(
+                    f"La prueba de {nombre} trae criterio {prueba.criterio!r}."
+                )
         # El sistema no puede nombrar interacciones «suficientes» sin haberlo
         # verificado, ni ofrecer un contrafactual sin haber verificado necesidad.
-        if (self.indices_suficientes or self.conceptos_suficientes) and not self.es_suficiente:
-            raise ValueError("Se informan interacciones suficientes sin verificar suficiencia.")
+        if (
+            self.indices_suficientes or self.conceptos_suficientes
+        ) and not self.es_suficiente:
+            raise ValueError(
+                "Se informan interacciones suficientes sin verificar suficiencia."
+            )
         if self.contrafactual is not None and not self.es_necesaria:
-            raise ValueError("Un contrafactual requiere haber verificado exhaustividad.")
+            raise ValueError(
+                "Un contrafactual requiere haber verificado exhaustividad."
+            )
         if self.motivo in (MOTIVO_FIEL, MOTIVO_NO_SUPERA_AZAR) and (
             (self.motivo == MOTIVO_FIEL) != self.es_fiel
         ):
@@ -178,8 +186,10 @@ class FidelidadExplicacion:
             )
 
     def _pasa(self, prueba: PruebaFidelidad | None) -> bool:
-        return prueba is not None and prueba.n_aleatorios > 0 and (
-            prueba.confianza >= self.umbral
+        return (
+            prueba is not None
+            and prueba.n_aleatorios > 0
+            and (prueba.confianza >= self.umbral)
         )
 
     @property

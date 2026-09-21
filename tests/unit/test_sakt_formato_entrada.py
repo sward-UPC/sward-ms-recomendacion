@@ -242,7 +242,9 @@ def _modelo_indiferente(monkeypatch, ad):
     Así la atención nunca le gana estrictamente al azar y ambas pruebas fallan
     de forma determinista.
     """
-    monkeypatch.setattr(ad, "_inferir", lambda qs, rs, qry, borrados=None: [0.7] * len(qs))
+    monkeypatch.setattr(
+        ad, "_inferir", lambda qs, rs, qry, borrados=None: [0.7] * len(qs)
+    )
 
 
 def test_sin_suficiencia_verificada_no_nombra_conceptos(monkeypatch):
