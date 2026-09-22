@@ -266,6 +266,86 @@ class SaktPyktAdapter(ModeloKTPort):
             return self._mock_prediccion(secuencia)
         return self._real_prediccion(secuencia)
 
+    def predecir_dominio_por_concepto(
+        self, secuencia: SecuenciaInteraccion, conceptos: list[str]
+    ) -> dict[str, float]:
+        """Probabilidad de acertar el próximo intento de cada concepto.
+
+        Toda la historia es el pasado y la consulta del último paso es el
+        concepto que se estima: una fila por concepto, en una sola pasada. Es lo
+        que permite ordenar los temas por el dominio que estima el modelo y no
+        por el promedio de aciertos. Vacío si el modelo es el simulado, si no
+        tiene índice de conceptos o si la historia no alcanza (menos de 2
+        interacciones conocidas, la misma regla que la predicción).
+        """
+        if self._mock or not self._concept_index:
+            return {}
+        try:
+            pares = self._pares(secuencia)[-self._seq_len :]
+            if len(pares) < 2:
+                return {}
+            conocidos = [
+                (c, self._concept_index[c])
+                for c in dict.fromkeys(str(x) for x in conceptos)
+                if c in self._concept_index
+            ]
+            if not conocidos:
+                return {}
+            q = [p[0] for p in pares]
+            r = [p[1] for p in pares]
+            probs = self._inferir_consultas(q, r, [q[1:] + [i] for _, i in conocidos])
+            return {
+                c: round(min(max(float(p), 0.0), 1.0), 4)
+                for (c, _), p in zip(conocidos, probs)
+            }
+        except Exception as e:
+            logger.error("Estimación por concepto falló: %s", e)
+            return {}
+
+    def _pares(self, secuencia: SecuenciaInteraccion) -> list[tuple[int, int]]:
+        """(índice del concepto, acierto) de las interacciones que el modelo conoce.
+
+        Con concept_index (modelo Moodle) traduce la sección y omite las
+        desconocidas; sin índice (legacy assist2015) los conceptos ya son enteros.
+        """
+        pares: list[tuple[int, int]] = []
+        for concepto, correcta in zip(
+            secuencia.concepto_ids, secuencia.respuestas_correctas
+        ):
+            if self._concept_index:
+                idx = self._concept_index.get(str(concepto))
+                if idx is None:
+                    continue
+            elif str(concepto).lstrip("-").isdigit():
+                idx = int(concepto)
+            else:
+                continue
+            pares.append((idx, 1 if correcta else 0))
+        return pares
+
+    def _inferir_consultas(self, q: list, r: list, qrys: list) -> list:
+        """Una pasada con la misma historia y una consulta distinta por fila;
+        devuelve la probabilidad del último paso real de cada fila."""
+        import torch
+
+        n, filas = len(q), len(qrys)
+        relleno = [PAD_TOKEN] * (self._seq_len - n)
+        if self._formato == FORMATO_DERECHA:
+            q_t = torch.LongTensor([q + relleno] * filas)
+            r_t = torch.LongTensor([r + relleno] * filas)
+            qry_t = torch.LongTensor([list(x) + relleno for x in qrys])
+            kpm = torch.zeros(filas, self._seq_len, dtype=torch.bool)
+            kpm[:, n:] = True
+            pos = n - 1
+        else:
+            q_t = torch.LongTensor([relleno + q] * filas)
+            r_t = torch.LongTensor([relleno + r] * filas)
+            qry_t = torch.LongTensor([relleno + list(x) for x in qrys])
+            kpm, pos = None, -1
+        with torch.no_grad():
+            out = self._model(q_t, r_t, qry_t, key_padding_mask=kpm)
+        return out[:, pos].tolist()
+
     def leer_info(self) -> dict:
         return leer_info_modelo()
 
@@ -288,23 +368,7 @@ class SaktPyktAdapter(ModeloKTPort):
 
     def _real_prediccion(self, secuencia: SecuenciaInteraccion) -> PrediccionKT:
         try:
-            # Mapear conceptos→índices enteros que entiende el modelo:
-            #  - con concept_index (modelo Moodle): traduce la sección; omite desconocidos.
-            #  - sin índice (legacy assist2015): los conceptos ya son string-ints.
-            pares: list[tuple[int, int]] = []
-            for concepto, correcta in zip(
-                secuencia.concepto_ids, secuencia.respuestas_correctas
-            ):
-                if self._concept_index:
-                    idx = self._concept_index.get(str(concepto))
-                    if idx is None:
-                        continue
-                elif str(concepto).lstrip("-").isdigit():
-                    idx = int(concepto)
-                else:
-                    continue
-                pares.append((idx, 1 if correcta else 0))
-
+            pares = self._pares(secuencia)
             if len(pares) < 2:
                 return self._mock_prediccion(secuencia)
             concepts = [p[0] for p in pares]

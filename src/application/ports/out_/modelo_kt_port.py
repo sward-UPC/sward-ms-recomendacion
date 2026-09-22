@@ -18,6 +18,18 @@ class ModeloKTPort(ABC):
         """Estima la probabilidad de dominio y los pesos de atención del último paso."""
         ...
 
+    def predecir_dominio_por_concepto(
+        self, secuencia: SecuenciaInteraccion, conceptos: list[str]
+    ) -> dict[str, float]:
+        """Probabilidad de acertar el próximo intento de cada concepto, dada toda la
+        historia del estudiante.
+
+        Devuelve solo los conceptos que el modelo pudo estimar. Vacío cuando no
+        puede (modelo simulado, conceptos que no conoce, historia insuficiente):
+        en ese caso quien llama no debe atribuirle ninguna cifra al modelo.
+        """
+        return {}
+
     @abstractmethod
     def leer_info(self) -> dict:
         """Metadata real del modelo entrenado (hiperparámetros, métricas, fechas)."""
