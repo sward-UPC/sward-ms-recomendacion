@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from uuid import UUID
 
 import httpx
@@ -5,6 +6,26 @@ import httpx
 from src.domain.entities.secuencia_interaccion import SecuenciaInteraccion
 from src.application.ports.out_.trazabilidad_client_port import TrazabilidadClientPort
 from src.infrastructure.config.settings import settings
+
+
+def _cronologico(items: list[dict]) -> list[dict]:
+    """Ordena las interacciones de la más antigua a la más reciente.
+
+    ms-trazabilidad las devuelve de la más reciente a la más antigua (las 50
+    últimas), y el modelo se entrenó con las secuencias en orden cronológico:
+    sin reordenarlas, lo que el modelo toma como la interacción más reciente es
+    en realidad la más antigua, y la predicción y la verificación de la
+    explicación se calculan sobre la historia al revés.
+    """
+
+    def clave(item: dict) -> datetime:
+        try:
+            fecha = datetime.fromisoformat(item["fecha"])
+        except (KeyError, TypeError, ValueError):
+            return datetime.min.replace(tzinfo=timezone.utc)
+        return fecha if fecha.tzinfo else fecha.replace(tzinfo=timezone.utc)
+
+    return sorted(items, key=clave)
 
 
 class TrazabilidadRestAdapter(TrazabilidadClientPort):
@@ -27,7 +48,7 @@ class TrazabilidadRestAdapter(TrazabilidadClientPort):
                 params={"courseId": str(curso_id), "limit": 50},
                 headers=headers,
             )
-            items = r.json() if r.status_code == 200 else []
+            items = _cronologico(r.json()) if r.status_code == 200 else []
         # Concepto = sección Moodle (concept_id); corrección real (is_correct).
         # Se descartan interacciones sin concepto (no aportan a la secuencia KT).
         con_concepto = [i for i in items if i.get("concept_id")]

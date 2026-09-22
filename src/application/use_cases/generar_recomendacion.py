@@ -127,10 +127,16 @@ class GenerarRecomendacionUseCase:
             )
         prefiere_practica = bool(pref_tipo) and _categoria(pref_tipo) == "practica"
 
-        # Top-K conceptos más débiles según el dominio estimado por sección. Antes
-        # solo targeteábamos UNO → muy pocos items; ahora cubrimos varios conceptos
-        # (estudiar + practicar por cada uno), tan rico como el motor del docente.
-        debiles = self._conceptos_mas_debiles(secuencia, self._max_conceptos_debiles)
+        # Top-K conceptos más débiles según el dominio que estima el SAKT para cada
+        # uno. Si el modelo no puede estimarlos todos (modelo simulado, historia
+        # corta), se usa el promedio de aciertos y el texto lo dice así: el motivo
+        # nunca le atribuye al modelo una cifra que no calculó.
+        dominio_modelo = self._modelo.predecir_dominio_por_concepto(
+            secuencia, list(dict.fromkeys(secuencia.concepto_ids))
+        )
+        debiles, fuente = self._conceptos_mas_debiles(
+            secuencia, self._max_conceptos_debiles, dominio_modelo
+        )
 
         # Repartimos el cupo total entre los conceptos: con 1 concepto trae hasta
         # max_recomendaciones; con 3, ~2 cada uno. Así nunca queda escueto.
@@ -155,6 +161,7 @@ class GenerarRecomendacionUseCase:
                     por_concepto,
                     pref_tipo=pref_tipo,
                     prefiere_practica=prefiere_practica,
+                    fuente=fuente,
                 )
             )
 
@@ -172,6 +179,9 @@ class GenerarRecomendacionUseCase:
                 por_concepto=self._max_recomendaciones,
                 pref_tipo=pref_tipo,
                 prefiere_practica=prefiere_practica,
+                # La predicción real siempre trae su veredicto de fidelidad; la
+                # simulada no, y su cifra es un promedio de aciertos.
+                fuente="modelo" if prediccion.fidelidad is not None else "promedio",
             )
 
         # Límite global y renumeración del orden.
@@ -206,15 +216,20 @@ class GenerarRecomendacionUseCase:
         return guardada
 
     @staticmethod
-    def _conceptos_mas_debiles(secuencia, top_k: int) -> list[tuple[str, float]]:
-        """Top-K conceptos con menor dominio (promedio de aciertos), de menor a mayor.
+    def _conceptos_mas_debiles(
+        secuencia, top_k: int, dominio_modelo: dict[str, float] | None = None
+    ) -> tuple[list[tuple[str, float]], str]:
+        """Top-K conceptos con menor dominio, de menor a mayor, y de dónde sale.
 
-        Devuelve ``[(concepto, dominio_0a1), ...]``. Vacío si no hay interacciones.
+        Usa el dominio que estima el modelo cuando cubre todos los conceptos del
+        historial (``"modelo"``); si no, el promedio de aciertos (``"promedio"``).
+        No se mezclan: una lista ordenada con dos escalas distintas no significa
+        nada. Devuelve ``([(concepto, dominio_0a1), ...], fuente)``.
         """
         conceptos = getattr(secuencia, "concepto_ids", None) or []
         aciertos = getattr(secuencia, "respuestas_correctas", None) or []
         if not conceptos:
-            return []
+            return [], "promedio"
 
         suma: dict[str, float] = {}
         cuenta: dict[str, int] = {}
@@ -222,9 +237,14 @@ class GenerarRecomendacionUseCase:
             suma[concepto] = suma.get(concepto, 0.0) + (1.0 if correcta else 0.0)
             cuenta[concepto] = cuenta.get(concepto, 0) + 1
 
+        if dominio_modelo and all(c in dominio_modelo for c in cuenta):
+            estimados = [(c, dominio_modelo[c]) for c in cuenta]
+            estimados.sort(key=lambda x: x[1])  # más débil primero
+            return estimados[:top_k], "modelo"
+
         promedios = [(c, suma[c] / cuenta[c]) for c in cuenta]
         promedios.sort(key=lambda x: x[1])  # más débil primero
-        return promedios[:top_k]
+        return promedios[:top_k], "promedio"
 
     def _rankear_concepto(
         self,
@@ -235,6 +255,7 @@ class GenerarRecomendacionUseCase:
         por_concepto: int = 2,
         pref_tipo: str = "",
         prefiere_practica: bool = False,
+        fuente: str = "promedio",
     ) -> list[ItemRecomendado]:
         """Elige los mejores recursos de un concepto: estudiar + practicar, sin
         repetir lo ya elegido en otros conceptos. ``por_concepto`` topa cuántos
@@ -326,9 +347,13 @@ class GenerarRecomendacionUseCase:
         for r in elegidos:
             usados.add(clave(r))
             estudia = es_estudio(r)
+            if fuente == "modelo":
+                cifra = f"el modelo SAKT estima tu dominio en {dominio:.0%}"
+            else:
+                donde = "este tema" if concepto else "el curso"
+                cifra = f"llevas {dominio:.0%} de aciertos en {donde}"
             motivo = (
-                f"Refuerza {concepto_txt} — el modelo SAKT estima tu dominio en "
-                f"{dominio:.0%}. "
+                f"Refuerza {concepto_txt} — {cifra}. "
                 f"{'Material de estudio' if estudia else 'Práctica'} para afianzar."
             )
             # Explicación honesta cuando se priorizó por la preferencia de formato.
