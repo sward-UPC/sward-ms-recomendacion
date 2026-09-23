@@ -296,6 +296,7 @@ async def atencion(
             for p in res.puntos
         ],
         fidelidad=_fidelidad_response(res.fidelidad),
+        fuente=res.fuente,
     )
 
 
