@@ -23,6 +23,9 @@ class AtencionResultado:
     probabilidad_dominio: float
     puntos: list[PuntoAtencion]
     fidelidad: FidelidadExplicacion | None = None
+    # «modelo» o «promedio»: ver PrediccionKT.fuente. La pantalla lo necesita
+    # para no atribuirle al SAKT una cifra que no salió de él.
+    fuente: str = "modelo"
 
 
 class ConsultarAtencionUseCase:
@@ -58,4 +61,5 @@ class ConsultarAtencionUseCase:
             probabilidad_dominio=pred.probabilidad_dominio,
             puntos=puntos,
             fidelidad=pred.fidelidad,
+            fuente=pred.fuente,
         )
