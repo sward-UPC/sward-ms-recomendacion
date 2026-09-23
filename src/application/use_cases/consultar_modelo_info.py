@@ -23,4 +23,16 @@ class ConsultarModeloInfoUseCase:
             raise ModeloInfoNoDisponibleError(
                 f"No se pudo leer el modelo desde S3: {exc}"
             ) from exc
-        return {"mock": self._es_mock, **info}
+        from src.infrastructure.config.settings import settings
+
+        # La versión sale del nombre del artefacto desplegado y el umbral, de la
+        # configuración en uso. El panel de administración los mostraba escritos
+        # a mano («SAKT v2.1», 0.75), que no eran los del sistema.
+        archivo = settings.sakt_model_s3_key.rsplit("/", 1)[-1]
+        version = archivo.removesuffix(".pth")
+        return {
+            "mock": self._es_mock,
+            "version": version,
+            "umbral_confianza_xai": settings.xai_umbral_confianza,
+            **info,
+        }
