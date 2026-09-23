@@ -14,6 +14,12 @@ class ModelInfoResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     mock: bool = Field(..., description="True si este entorno corre el modelo simulado")
+    version: str | None = Field(
+        default=None, description="Artefacto desplegado, del nombre del objeto en S3"
+    )
+    umbral_confianza_xai: float | None = Field(
+        default=None, description="Umbral de confianza de la verificación en uso"
+    )
     n_skills: int | None = Field(
         default=None, description="Número de skills del modelo"
     )
