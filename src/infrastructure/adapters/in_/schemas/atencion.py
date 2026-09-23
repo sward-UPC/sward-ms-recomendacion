@@ -1,5 +1,7 @@
 """Contratos HTTP del heatmap de atención del SAKT."""
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -82,3 +84,12 @@ class AtencionResponse(BaseModel):
     probabilidad_dominio: float = Field(..., ge=0.0, le=1.0)
     puntos: list[PuntoAtencionResponse]
     fidelidad: FidelidadResponse | None = None
+    fuente: Literal["modelo", "promedio"] = Field(
+        "modelo",
+        description=(
+            "De dónde sale la cifra: «modelo» si la produjo el SAKT entrenado; "
+            "«promedio» si el modelo no pudo (conceptos que no conoce, historia "
+            "muy corta) y es el promedio de aciertos con atención uniforme, que "
+            "no debe presentarse como una estimación del modelo."
+        ),
+    )

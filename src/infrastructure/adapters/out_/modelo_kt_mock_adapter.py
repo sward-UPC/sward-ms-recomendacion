@@ -29,6 +29,7 @@ class ModeloKtMockAdapter(ModeloKTPort):
             probabilidad_dominio=round(prob, 4),
             confianza=0.7 if n >= 5 else 0.4,
             pesos_atencion=pesos,
+            fuente="promedio",
         )
 
     def leer_info(self) -> dict:

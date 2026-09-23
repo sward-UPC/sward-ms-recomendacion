@@ -179,9 +179,11 @@ class GenerarRecomendacionUseCase:
                 por_concepto=self._max_recomendaciones,
                 pref_tipo=pref_tipo,
                 prefiere_practica=prefiere_practica,
-                # La predicción real siempre trae su veredicto de fidelidad; la
-                # simulada no, y su cifra es un promedio de aciertos.
-                fuente="modelo" if prediccion.fidelidad is not None else "promedio",
+                # La predicción dice de dónde sale su cifra. Antes se deducía de
+                # que trajera veredicto de fidelidad, y una predicción real con
+                # historia corta —que no lo trae— se anunciaba como «aciertos»
+                # cuando era la estimación del modelo.
+                fuente=prediccion.fuente,
             )
 
         # Límite global y renumeración del orden.

@@ -21,6 +21,12 @@ class PrediccionKT:
     # Resultado de contrastar la atención contra el borrado aleatorio para ESTA
     # secuencia. None cuando el adaptador no pudo o no debía verificar.
     fidelidad: FidelidadExplicacion | None = None
+    # De dónde sale la cifra: «modelo», cuando la produjo el SAKT entrenado, o
+    # «promedio», cuando el modelo no pudo (conceptos que no conoce, historia de
+    # menos de dos pasos, artefacto que no cargó) y se cayó al promedio de
+    # aciertos con atención uniforme. Quien la muestre no debe atribuirle al
+    # modelo una cifra que no es suya.
+    fuente: str = "modelo"
     fecha_prediccion: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
