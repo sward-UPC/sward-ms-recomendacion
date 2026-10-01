@@ -45,13 +45,24 @@ class TrazabilidadRestAdapter(TrazabilidadClientPort):
         async with httpx.AsyncClient(timeout=10.0) as client:
             r = await client.get(
                 f"{settings.trazabilidad_service_url}/internal/students/{estudiante_id}/interactions",
-                params={"courseId": str(curso_id), "limit": 50},
+                params={
+                    "courseId": str(curso_id),
+                    "limit": 50,
+                    "soloCalificadas": "true",
+                },
                 headers=headers,
             )
             items = _cronologico(r.json()) if r.status_code == 200 else []
         # Concepto = sección Moodle (concept_id); corrección real (is_correct).
-        # Se descartan interacciones sin concepto (no aportan a la secuencia KT).
-        con_concepto = [i for i in items if i.get("concept_id")]
+        # Se descartan interacciones sin concepto (no aportan a la secuencia KT)
+        # y las vistas, que son abrir un resumen, un video o la solución: llegan
+        # con `is_correct=True` sin que nadie haya respondido nada. El filtro ya
+        # va en la consulta (`soloCalificadas`), para que el `limit` no se gaste
+        # en vistas; este segundo filtro cubre el caso de un trazabilidad viejo
+        # que todavía no conozca el parámetro y las devuelva igual.
+        con_concepto = [
+            i for i in items if i.get("concept_id") and not i.get("es_vista")
+        ]
         return SecuenciaInteraccion(
             estudiante_id=estudiante_id,
             curso_id=curso_id,
