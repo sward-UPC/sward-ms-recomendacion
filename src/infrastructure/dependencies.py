@@ -1,4 +1,5 @@
 from fastapi import Depends
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sward_shared.auth import build_require_jwt, build_require_service_key
 
@@ -13,6 +14,7 @@ from src.application.use_cases.consultar_recomendacion import (
 from src.application.use_cases.generar_material import GenerarMaterialUseCase
 from src.application.use_cases.generar_recomendacion import GenerarRecomendacionUseCase
 from src.application.use_cases.verificar_ejercicio import VerificarEjercicioUseCase
+from src.application.ports.out_.cursos_client_port import CursosClientPort
 from src.application.ports.out_.modelo_kt_port import ModeloKTPort
 from src.infrastructure.adapters.out_.bedrock_llm_adapter import BedrockLlmAdapter
 from src.infrastructure.adapters.out_.cursos_rest_adapter import CursosRestAdapter
@@ -35,6 +37,23 @@ require_jwt = build_require_jwt(settings.secret_key, algorithm=settings.jwt_algo
 
 # Validación entrante de service-key (modo dev permite sin claves configuradas).
 require_service_key = build_require_service_key(settings.authorized_service_keys_set)
+
+_bearer = HTTPBearer()
+
+
+async def token_del_usuario(
+    credenciales: HTTPAuthorizationCredentials = Depends(_bearer),
+) -> str:
+    """El JWT tal como llegó, para reenviarlo a ms-cursos-recursos.
+
+    Solo se usa después de ``require_jwt``, que ya validó firma, vencimiento y
+    tipo: aquí no se vuelve a decodificar.
+    """
+    return credenciales.credentials
+
+
+def get_cursos_client() -> CursosClientPort:
+    return CursosRestAdapter()
 
 
 def get_modelo() -> ModeloKTPort:
