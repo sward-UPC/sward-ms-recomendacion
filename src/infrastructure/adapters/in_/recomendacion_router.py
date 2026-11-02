@@ -1,7 +1,12 @@
+import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from src.application.ports.out_.cursos_client_port import (
+    AsignacionNoDisponibleError,
+    CursosClientPort,
+)
 from src.application.use_cases.completar_recomendacion import (
     CompletarRecomendacionCommand,
     CompletarRecomendacionUseCase,
@@ -44,15 +49,107 @@ from src.infrastructure.dependencies import (
     get_atencion_uc,
     get_completar_uc,
     get_consultar_uc,
+    get_cursos_client,
     get_generar_uc,
     get_material_uc,
     get_modelo_info_uc,
     get_verificar_ejercicio_uc,
     require_jwt,
     require_service_key,
+    token_del_usuario,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/recommendations", tags=["Recomendación"])
+
+# Lo que la documentación de cada ruta dice sobre quién ve a quién.
+RESPUESTAS_DEL_DOCENTE = {
+    403: {
+        "description": "Acceso denegado. El docente solo ve a los estudiantes de "
+        "los cursos que dicta; el administrador, a todos."
+    },
+    503: {
+        "description": "No se pudo consultar quién dicta el curso; no se "
+        "entregan datos."
+    },
+}
+
+
+def _uuid_o_none(valor) -> UUID | None:
+    try:
+        return UUID(str(valor))
+    except ValueError:
+        return None
+
+
+async def dicta_el_curso(
+    curso_id: UUID, payload: dict, token: str, cursos: CursosClientPort
+) -> None:
+    """Deja pasar al docente asignado a ESE curso; si no lo es, 403.
+
+    La asignación es el ``docente_id`` del curso en ms-cursos-recursos, el mismo
+    dato con el que el frontend arma el panel del docente. Si no se puede
+    consultar, 503 y no se entregan datos: «no lo sé» no se confunde con «sí lo
+    dicta».
+    """
+    try:
+        docente = await cursos.docente_del_curso(curso_id, token)
+    except AsignacionNoDisponibleError as exc:
+        logger.warning(
+            "No se pudo consultar quién dicta el curso %s: %s", curso_id, exc
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "No se pudo comprobar que dictes este curso. "
+                "Inténtalo de nuevo en unos minutos."
+            ),
+        ) from exc
+    if docente is None or docente != _uuid_o_none(payload.get("sub")):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acceso denegado: no dictas este curso.",
+        )
+
+
+async def para_quien(
+    estudiante_id: UUID,
+    curso_id: UUID | None,
+    payload: dict,
+    token: str,
+    cursos: CursosClientPort,
+) -> UUID:
+    """De quién son los datos que se leen o se generan.
+
+    Antes bastaba con no ser «estudiante» para indicar a cualquiera: un docente
+    veía el mapa de atención, la predicción y el veredicto de estudiantes de
+    cursos que no dicta, y un token sin rol o con uno desconocido, también.
+    Ahora la lista es explícita:
+
+    - administrador: el estudiante que indique, en cualquier curso;
+    - docente: él mismo, o un estudiante de un curso que dicte. Sin curso
+      —el listado de recomendaciones— no hay asignación que comprobar: 403;
+    - estudiante y cualquier otro rol: siempre él mismo, pida lo que pida.
+    """
+    rol = payload.get("rol")
+    propio = _uuid_o_none(payload.get("sub"))
+    if rol == "administrador":
+        return estudiante_id
+    if rol == "docente" and estudiante_id != propio:
+        if curso_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Acceso denegado: indica uno de los cursos que dictas.",
+            )
+        await dicta_el_curso(curso_id, payload, token, cursos)
+        return estudiante_id
+    if propio is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acceso denegado: el token no identifica a nadie.",
+        )
+    return propio
 
 
 @router.post(
@@ -63,6 +160,7 @@ router = APIRouter(prefix="/recommendations", tags=["Recomendación"])
         201: {"description": "Recomendaciones generadas exitosamente"},
         400: {"description": "Datos de entrada inválidos"},
         401: {"description": "No autorizado - requiere autenticación JWT"},
+        **RESPUESTAS_DEL_DOCENTE,
         404: {"description": "Estudiante o curso no encontrado"},
         500: {"description": "Error interno del servidor"},
     },
@@ -71,6 +169,8 @@ async def generar(
     body: GenerarRecomendacionRequest,
     uc: GenerarRecomendacionUseCase = Depends(get_generar_uc),
     payload: dict = Depends(require_jwt),
+    token: str = Depends(token_del_usuario),
+    cursos: CursosClientPort = Depends(get_cursos_client),
 ):
     """
     Genera recomendaciones personalizadas para un estudiante en un curso.
@@ -86,11 +186,10 @@ async def generar(
     **Autenticación:** Bearer JWT (requerido)
     """
     # Un estudiante solo genera sus propias recomendaciones (toma su UUID del JWT);
-    # docente/admin pueden generar para un estudiante indicado en el body.
-    estudiante_id = (
-        UUID(payload["sub"])
-        if payload.get("rol") == "estudiante"
-        else body.estudianteId
+    # el docente, para un estudiante de un curso que dicte; el administrador,
+    # para cualquiera (ver `para_quien`).
+    estudiante_id = await para_quien(
+        body.estudianteId, body.cursoId, payload, token, cursos
     )
     rec = await uc.execute(
         GenerarRecomendacionCommand(estudiante_id=estudiante_id, curso_id=body.cursoId)
@@ -119,25 +218,27 @@ async def generar(
     responses={
         200: {"description": "Material generado, o fallback si el LLM no está activo"},
         401: {"description": "No autorizado - requiere autenticación JWT"},
+        **RESPUESTAS_DEL_DOCENTE,
     },
 )
 async def generar_material(
     body: GenerarMaterialRequest,
     uc: GenerarMaterialUseCase = Depends(get_material_uc),
     payload: dict = Depends(require_jwt),
+    token: str = Depends(token_del_usuario),
+    cursos: CursosClientPort = Depends(get_cursos_client),
 ):
     """Genera un set de recursos educativos tipados (LLM + video real de YouTube).
 
     El LLM produce un quiz, una mini-lección y una práctica para reforzar el
     concepto débil; YouTube aporta un video real. Un estudiante usa su propio JWT;
-    docente/admin pueden indicar otro en el body. Todo es best-effort: si no hay
-    clave o la llamada falla, devuelve ``disponible: false`` con ``recursos: []``
-    (status 200, nunca rompe).
+    el docente puede indicar a un estudiante de un curso que dicte, y el
+    administrador a cualquiera. Todo es best-effort: si no hay clave o la llamada
+    falla, devuelve ``disponible: false`` con ``recursos: []`` (status 200, nunca
+    rompe); quién puede pedirlo sí se decide antes y puede ser 403 o 503.
     """
-    estudiante_id = (
-        UUID(payload["sub"])
-        if payload.get("rol") == "estudiante"
-        else body.estudianteId
+    estudiante_id = await para_quien(
+        body.estudianteId, body.cursoId, payload, token, cursos
     )
     material = await uc.execute(
         GenerarMaterialCommand(
@@ -191,6 +292,7 @@ async def verificar_ejercicio(
     responses={
         200: {"description": "Listado de recomendaciones obtenido exitosamente"},
         401: {"description": "No autorizado - requiere autenticación JWT"},
+        **RESPUESTAS_DEL_DOCENTE,
         404: {"description": "Estudiante no encontrado"},
         500: {"description": "Error interno del servidor"},
     },
@@ -202,6 +304,8 @@ async def listar(
     ),
     uc: ConsultarRecomendacionUseCase = Depends(get_consultar_uc),
     payload: dict = Depends(require_jwt),
+    token: str = Depends(token_del_usuario),
+    cursos: CursosClientPort = Depends(get_cursos_client),
 ):
     """
     Lista todas las recomendaciones generadas para un estudiante.
@@ -214,10 +318,10 @@ async def listar(
 
     **Autenticación:** Bearer JWT (requerido)
     """
-    # El estudiante solo ve sus propias recomendaciones (UUID del JWT).
-    if payload.get("rol") == "estudiante":
-        estudianteId = UUID(payload["sub"])
-    recs = await uc.execute(ConsultarRecomendacionCommand(estudiante_id=estudianteId))
+    # El estudiante solo ve sus propias recomendaciones (UUID del JWT). El
+    # listado mezcla cursos, así que el docente solo ve las suyas.
+    estudiante_id = await para_quien(estudianteId, None, payload, token, cursos)
+    recs = await uc.execute(ConsultarRecomendacionCommand(estudiante_id=estudiante_id))
     return [
         ListarRecomendacionesResponse(
             id=str(r.id),
@@ -269,6 +373,7 @@ async def completar(
     responses={
         200: {"description": "Heatmap de atención obtenido"},
         401: {"description": "No autorizado - requiere autenticación JWT"},
+        **RESPUESTAS_DEL_DOCENTE,
     },
 )
 async def atencion(
@@ -276,14 +381,16 @@ async def atencion(
     cursoId: UUID = Query(..., description="UUID del curso"),
     uc: ConsultarAtencionUseCase = Depends(get_atencion_uc),
     payload: dict = Depends(require_jwt),
+    token: str = Depends(token_del_usuario),
+    cursos: CursosClientPort = Depends(get_cursos_client),
 ):
     """Pesos de atención reales del SAKT sobre las interacciones del estudiante.
 
-    Un estudiante solo ve los suyos (UUID del JWT); docente/admin pueden indicar otro.
+    Un estudiante solo ve los suyos (UUID del JWT); el docente puede indicar a un
+    estudiante de un curso que dicte, y el administrador a cualquiera.
     """
-    if payload.get("rol") == "estudiante":
-        estudianteId = UUID(payload["sub"])
-    res = await uc.execute(estudianteId, cursoId)
+    estudiante_id = await para_quien(estudianteId, cursoId, payload, token, cursos)
+    res = await uc.execute(estudiante_id, cursoId)
     return AtencionResponse(
         probabilidad_dominio=res.probabilidad_dominio,
         puntos=[

@@ -16,6 +16,7 @@ from src.infrastructure.dependencies import (
     get_consultar_uc,
     get_generar_uc,
     require_jwt,
+    token_del_usuario,
 )
 
 
@@ -59,6 +60,9 @@ def auth_app(fake_payload):
     app.dependency_overrides[get_generar_uc] = lambda: generar_uc
     app.dependency_overrides[get_consultar_uc] = lambda: consultar_uc
     app.dependency_overrides[require_jwt] = lambda: fake_payload
+    # El token crudo solo se reenvía a ms-cursos-recursos cuando un docente
+    # pide a otro estudiante; aquí el payload es de un estudiante.
+    app.dependency_overrides[token_del_usuario] = lambda: "token-de-prueba"
     yield app
     app.dependency_overrides.clear()
 
