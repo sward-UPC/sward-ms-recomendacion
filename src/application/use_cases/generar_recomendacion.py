@@ -184,6 +184,9 @@ class GenerarRecomendacionUseCase:
                 # historia corta —que no lo trae— se anunciaba como «aciertos»
                 # cuando era la estimación del modelo.
                 fuente=prediccion.fuente,
+                # Sin actividades calificadas no hay cifra que dar: el 50 % que
+                # devuelve el modelo en ese caso es su valor por defecto.
+                sin_historial=not secuencia.concepto_ids,
             )
 
         # Límite global y renumeración del orden.
@@ -258,10 +261,14 @@ class GenerarRecomendacionUseCase:
         pref_tipo: str = "",
         prefiere_practica: bool = False,
         fuente: str = "promedio",
+        sin_historial: bool = False,
     ) -> list[ItemRecomendado]:
         """Elige los mejores recursos de un concepto: estudiar + practicar, sin
         repetir lo ya elegido en otros conceptos. ``por_concepto`` topa cuántos
         aporta este concepto.
+
+        Con ``sin_historial`` el motivo no da ninguna cifra: el estudiante todavía
+        no tiene actividades calificadas y los recursos son su punto de partida.
 
         Si hay preferencia de formato (``pref_tipo``), prioriza ese formato:
         lidera con práctica cuando el estudiante rinde mejor practicando, y da un
@@ -349,15 +356,19 @@ class GenerarRecomendacionUseCase:
         for r in elegidos:
             usados.add(clave(r))
             estudia = es_estudio(r)
-            if fuente == "modelo":
-                cifra = f"el modelo SAKT estima tu dominio en {dominio:.0%}"
+            formato = "Material de estudio" if estudia else "Práctica"
+            if sin_historial:
+                motivo = (
+                    "Punto de partida del curso — todavía no tienes actividades "
+                    f"calificadas. {formato} para empezar."
+                )
             else:
-                donde = "este tema" if concepto else "el curso"
-                cifra = f"llevas {dominio:.0%} de aciertos en {donde}"
-            motivo = (
-                f"Refuerza {concepto_txt} — {cifra}. "
-                f"{'Material de estudio' if estudia else 'Práctica'} para afianzar."
-            )
+                if fuente == "modelo":
+                    cifra = f"el modelo SAKT estima tu dominio en {dominio:.0%}"
+                else:
+                    donde = "este tema" if concepto else "el curso"
+                    cifra = f"llevas {dominio:.0%} de aciertos en {donde}"
+                motivo = f"Refuerza {concepto_txt} — {cifra}. {formato} para afianzar."
             # Explicación honesta cuando se priorizó por la preferencia de formato.
             if pref_tipo and _categoria(str(r.get("tipo", "")).lower()) == _categoria(
                 pref_tipo
